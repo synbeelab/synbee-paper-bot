@@ -17,7 +17,7 @@ slack-bolt>=1.18.0
 slack-sdk>=3.27.0
 
 # LLM SDKs (필요한 것만 활성화)
-google-generativeai>=0.8.0          # Gemini — Stage 2 필터 + 요약
+google-genai>=1.0.0                  # Gemini — Stage 2 필터 + 요약 (구 google-generativeai 후속)
 anthropic>=0.40.0                    # Claude — 품질 검증·sanity check 용
 # openai>=1.50.0
 

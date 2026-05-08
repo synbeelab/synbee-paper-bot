@@ -57,7 +57,7 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 다음 JSON 한 줄로만 응답하세요. 다른 텍스트 금지.
 
 ```json
-{"verdict": "YES" | "NO", "mission": 1 | 2 | 3 | null, "score": 1-10, "one_liner": "<왜 통과/탈락인지 한 문장 한국어>"}
+{"verdict": "YES" | "NO", "mission": 1 | 2 | 3 | null, "score": 1-10, "one_liner": "<왜 통과/탈락인지 한 문장 한국어>", "one_liner_en": "<one-sentence English summary of the paper's contribution>"}
 ```
 
 - `verdict`: YES / NO 중 하나
@@ -67,7 +67,12 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
   - 7~8: 강한 관련, lab에서 검토 가치 분명
   - 5~6: 약하게 관련, 필요 시 참고
   - 1~4: NO와 같음 (verdict는 NO로)
-- `one_liner`: 통과/탈락 이유를 한국어로 한 문장 (Slack 메시지 컨텍스트로 표시됨)
+- `one_liner`: 통과/탈락 이유를 **한국어**로 한 문장 (학술 용어는 영문 병기 가능,
+  예: "효소공학(enzyme engineering)"). Slack 메시지 컨텍스트로 표시됨.
+- `one_liner_en`: 같은 내용을 **English**로 한 문장. 단순 직역이 아니라
+  논문의 핵심 contribution을 자연스러운 학술 영어로 표현. 30단어 이내.
+  예: "Engineered modular PKS by swapping enoylreductase modules to expand
+  polyketide chemical space (Nature 2026)."
 
 ## 입력
 

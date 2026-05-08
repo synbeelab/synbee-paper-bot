@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS seen (
     score INTEGER,
     mission INTEGER,
     one_liner TEXT,
+    one_liner_en TEXT,
     pushed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_seen_pushed ON seen(pushed_at);
@@ -37,12 +38,21 @@ CREATE TABLE IF NOT EXISTS wiki_queue (
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Idempotent column additions for older DBs."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(seen)").fetchall()}
+    if "one_liner_en" not in cols:
+        conn.execute("ALTER TABLE seen ADD COLUMN one_liner_en TEXT")
+    conn.commit()
+
+
 class SeenDB:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        _migrate(self.conn)
         self.conn.commit()
 
     def has_seen(self, paper_id: str) -> bool:
@@ -66,8 +76,8 @@ class SeenDB:
         self.conn.execute(
             """INSERT OR REPLACE INTO seen
                (id, source, title, journal, year, doi, url, abstract,
-                verdict, score, mission, one_liner)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                verdict, score, mission, one_liner, one_liner_en)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 paper.id, paper.source, paper.title, paper.journal,
                 paper.year, paper.doi, paper.url, paper.abstract,
@@ -75,6 +85,7 @@ class SeenDB:
                 verdict.score if verdict else None,
                 verdict.mission if verdict else None,
                 verdict.one_liner if verdict else None,
+                verdict.one_liner_en if verdict else None,
             ),
         )
         self.conn.commit()

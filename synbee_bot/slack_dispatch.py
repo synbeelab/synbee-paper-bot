@@ -38,17 +38,31 @@ def build_paper_blocks(paper: Paper, verdict: Verdict) -> list[dict]:
         "elements": [{"type": "mrkdwn", "text": meta}],
     }
 
-    score_line = (f"{mission_label}  {score_emoji} *score {verdict.score}/10*\n"
-                  f"_{verdict.one_liner}_")
-    score_block = {"type": "section",
-                   "text": {"type": "mrkdwn", "text": score_line}}
+    score_block = {
+        "type": "section",
+        "text": {"type": "mrkdwn",
+                 "text": f"{mission_label}  {score_emoji} *score {verdict.score}/10*"},
+    }
+
+    # Bilingual one-liner summaries
+    summary_lines: list[str] = []
+    if verdict.one_liner:
+        summary_lines.append(f"🇰🇷 _{verdict.one_liner}_")
+    if verdict.one_liner_en:
+        summary_lines.append(f"🇬🇧 _{verdict.one_liner_en}_")
+    summary_block = None
+    if summary_lines:
+        summary_block = {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "\n".join(summary_lines)},
+        }
 
     abstract_block = None
     if paper.abstract:
         abstract_block = {
             "type": "section",
             "text": {"type": "mrkdwn",
-                     "text": "> " + _truncate(paper.abstract.replace("\n", " "), 600)},
+                     "text": "*Abstract*\n> " + _truncate(paper.abstract.replace("\n", " "), 600)},
         }
 
     actions = {
@@ -78,6 +92,8 @@ def build_paper_blocks(paper: Paper, verdict: Verdict) -> list[dict]:
         })
 
     blocks = [title_block, meta_block, score_block]
+    if summary_block:
+        blocks.append(summary_block)
     if abstract_block:
         blocks.append(abstract_block)
     blocks.append(actions)

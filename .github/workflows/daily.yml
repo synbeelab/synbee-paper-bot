@@ -42,13 +42,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # seen.db를 캐시해서 중복 푸시 방지 (action 실행 간 영속화)
+      - name: Validate secrets
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          missing=0
+          [ -z "$SLACK_BOT_TOKEN" ] && echo "❌ SLACK_BOT_TOKEN missing" && missing=1
+          [ -z "$GEMINI_API_KEY" ] && echo "❌ GEMINI_API_KEY missing" && missing=1
+          [ $missing -eq 1 ] && exit 1
+          echo "✓ Required secrets present"
+
+      # seen.db 캐시 — restore 전용 (자동 저장 비활성, 마지막 step에서만 명시 저장)
       - name: Restore seen.db cache
         id: cache-seen
         uses: actions/cache/restore@v4
         with:
           path: data/seen.db
-          # date 키로 강제 매일 새로 저장 + restore-keys로 가장 최근 것 복원
           key: synbee-seen-${{ github.run_id }}
           restore-keys: |
             synbee-seen-
