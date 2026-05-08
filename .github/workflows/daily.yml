@@ -19,6 +19,12 @@ on:
 permissions:
   contents: read
 
+# Opt-in to Node.js 24 runtime for JavaScript actions.
+# GitHub will force this default 2026-06-02 and remove Node 20 on 2026-09-16.
+# https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: synbee-daily
   cancel-in-progress: false
