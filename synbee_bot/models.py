@@ -34,8 +34,11 @@ class Verdict:
     verdict: str                     # "YES" | "NO"
     mission: int | None              # 1, 2, 3, or None
     score: int                       # 1-10
-    one_liner: str
+    one_liner: str                   # 한국어 한 줄 요약
+    one_liner_en: str = ""           # English one-line summary
     raw_response: str = ""
+    is_error: bool = False           # True if this verdict came from an SDK/parse failure
+    model_used: str = ""             # which model produced this verdict
 
     @property
     def is_yes(self) -> bool:

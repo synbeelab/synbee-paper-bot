@@ -25,7 +25,10 @@ sources:
 llm_filter:
   enabled: true
   provider: "gemini"                 # "gemini" | "anthropic" | "openai" | "ollama"
-  model: "gemini-2.5-flash-lite"     # 가장 저렴 — Stage 2 yes/no 판정용
+  model: "gemini-2.5-flash"          # Primary. Free tier 250 RPD/일.
+  fallback_models:                   # Primary 실패(503/429/SDK error) 시 순서대로 시도
+    - "gemini-2.5-flash-lite"        #   Free tier 20 RPD — 응급 fallback
+    # - "gemini-2.5-pro"             #   Free tier 50 RPD — quality 우선이면 활성화
   prompt_path: "config/filter_prompt.md"
   min_score: 6                       # filter_prompt.md의 score 6 미만은 드롭
   parallel_requests: 4

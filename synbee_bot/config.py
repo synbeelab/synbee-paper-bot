@@ -32,6 +32,7 @@ class Config:
     llm_enabled: bool
     llm_provider: str
     llm_model: str
+    llm_fallback_models: list[str]
     llm_prompt_path: Path
     llm_min_score: int
     llm_parallel: int
@@ -94,7 +95,8 @@ def load_config(config_path: Path | None = None) -> Config:
         rss_since_days=int(rss.get("since_days", 1)),
         llm_enabled=bool(llm.get("enabled", True)),
         llm_provider=str(llm.get("provider", "gemini")),
-        llm_model=str(llm.get("model", "gemini-2.5-flash-lite")),
+        llm_model=str(llm.get("model", "gemini-2.5-flash")),
+        llm_fallback_models=[str(m) for m in (llm.get("fallback_models") or [])],
         llm_prompt_path=PROJECT_ROOT / str(llm.get("prompt_path", "config/filter_prompt.md")),
         llm_min_score=int(llm.get("min_score", 6)),
         llm_parallel=int(llm.get("parallel_requests", 4)),

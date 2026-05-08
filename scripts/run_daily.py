@@ -22,6 +22,13 @@ import datetime as dt
 import sys
 from pathlib import Path
 
+# Force UTF-8 stdout/stderr so Korean + em-dashes don't crash on Windows cp949.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -103,10 +110,12 @@ def main() -> int:
             api_key = (cfg.gemini_api_key if cfg.llm_provider == "gemini"
                        else cfg.anthropic_api_key)
             prompt = load_prompt(cfg.llm_prompt_path)
-            _human_log(f"LLM filter ({cfg.llm_provider}/{cfg.llm_model}) on {len(new_papers)} papers…")
+            chain_str = " → ".join([cfg.llm_model] + cfg.llm_fallback_models)
+            _human_log(f"LLM filter ({cfg.llm_provider}/{chain_str}) on {len(new_papers)} papers…")
             results = filter_batch(
                 new_papers, prompt=prompt,
                 provider=cfg.llm_provider, model=cfg.llm_model,
+                fallback_models=cfg.llm_fallback_models,
                 api_key=api_key, parallel=cfg.llm_parallel,
                 timeout=cfg.llm_timeout,
             )
@@ -116,7 +125,25 @@ def main() -> int:
     # ----- Sort + threshold -----
     results.sort(key=lambda pv: -pv[1].score)
     passing = [(p, v) for p, v in results if v.is_yes and v.score >= min_score]
+
+    # Diagnostic: distribution of verdicts and which models actually responded
+    verdict_counts: dict[str, int] = {}
+    model_counts: dict[str, int] = {}
+    error_count = 0
+    for _, v in results:
+        key = f"{v.verdict}/score={v.score}"
+        verdict_counts[key] = verdict_counts.get(key, 0) + 1
+        if v.model_used:
+            model_counts[v.model_used] = model_counts.get(v.model_used, 0) + 1
+        if v.is_error:
+            error_count += 1
     _human_log(f"Filter: {len(passing)} pass / {len(results)} total (min_score={min_score})")
+    _human_log(f"Verdict distribution: {dict(sorted(verdict_counts.items()))}")
+    if model_counts:
+        _human_log(f"Model usage: {dict(sorted(model_counts.items()))}")
+    if error_count:
+        _human_log(f"⚠️  {error_count} papers had SDK/parse errors (see stderr above)")
+
     passing = passing[: cfg.slack_max_posts]
 
     # ----- Print to stdout (always) -----
@@ -124,8 +151,22 @@ def main() -> int:
     for p, v in passing:
         flag = "★" * min(5, max(1, (v.score + 1) // 2))
         print(f"{flag} [{v.score}/10] [{p.journal}] {p.title[:80]}")
-        print(f"     {v.one_liner}")
+        if v.one_liner:
+            print(f"     KR: {v.one_liner}")
+        if v.one_liner_en:
+            print(f"     EN: {v.one_liner_en}")
         print(f"     {p.url}")
+
+    # In dry-run, also show first 5 rejected papers so silent-failure modes
+    # (parse errors, SDK errors) are visible.
+    if args.dry_run and len(passing) < len(results):
+        rejected = [(p, v) for p, v in results if not (v.is_yes and v.score >= min_score)]
+        print()
+        print(f"--- Rejected (showing first 5 of {len(rejected)}) ---")
+        for p, v in rejected[:5]:
+            print(f"[{v.verdict}/{v.score}] [{p.journal}] {p.title[:80]}")
+            if v.one_liner:
+                print(f"     reason: {v.one_liner}")
 
     # ----- Persist verdicts (unless dry-run) -----
     if not args.dry_run:
