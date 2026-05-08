@@ -1,0 +1,31 @@
+{
+  "display_information": {
+    "name": "SynBEE Paper Bot",
+    "description": "SynBEE Lab 논문 알림 봇 (PubMed + bioRxiv + RSS → Gemini → Slack)",
+    "background_color": "#5B7E3C",
+    "long_description": "SynBEE Lab(고려대 화공생명공학과, 양동수 교수) 전용 논문 큐레이션 봇입니다. 매일 PubMed / bioRxiv / 주요 저널 RSS에서 신규 논문을 모아, SynBEE 3대 미션 적합도를 LLM(Gemini)으로 판정한 뒤 통과한 논문만 #papers-daily 채널로 푸시합니다. Pipeline A 송신 전용 봇이며, 이벤트 수신 / Socket Mode / 인터랙티비티는 사용하지 않습니다."
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "SynBEE Paper Bot",
+      "always_online": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write",
+        "chat:write.public",
+        "channels:read",
+        "groups:read",
+        "im:read",
+        "mpim:read"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

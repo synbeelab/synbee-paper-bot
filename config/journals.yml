@@ -1,0 +1,201 @@
+# SynBEE Lab 관심 학술지 리스트
+#
+# - 항목은 PubMed가 인식하는 NLM Title Abbreviation입니다.
+# - 검증: https://www.ncbi.nlm.nih.gov/nlmcatalog/journals 에서 정식 저널명 검색 후
+#         "NLM Title Abbreviation" 필드 확인.
+# - bioRxiv는 저널 개념이 없어 별도 처리 (rss_feeds 섹션).
+# - active=true인 그룹의 저널만 PubMed 쿼리에 포함됨.
+
+# ============================================================================
+# 사용자 지정 리스트 (양동수 교수 관심 저널 — 2026-05-07)
+# ============================================================================
+
+user_general_top_tier:
+  active: true
+  journals:
+    - "Nature"
+    - "Nat Commun"                  # Nature Communications
+    - "Proc Natl Acad Sci U S A"    # PNAS
+    - "Science"
+    - "Sci Adv"                     # Science Advances
+    - "Adv Sci (Weinh)"             # Advanced Science
+
+user_cell_biotech:
+  active: true
+  journals:
+    - "Cell"
+    - "Nat Biotechnol"              # Nature Biotechnology
+    - "Nat Chem Biol"               # Nature Chemical Biology
+    - "Nat Biomed Eng"              # Nature Biomedical Engineering
+    - "Nat Med"                     # Nature Medicine
+    - "Nat Microbiol"               # Nature Microbiology
+    - "Cell Rep"                    # Cell Reports
+    - "Cell Chem Biol"              # Cell Chemical Biology
+    - "Cell Syst"                   # Cell Systems
+    - "Mol Cell"                    # Molecular Cell
+
+user_metabolic_synbio:
+  active: true
+  journals:
+    - "Metab Eng"                   # Metabolic Engineering
+    - "ACS Synth Biol"              # ACS Synthetic Biology
+    - "ACS Chem Biol"               # ACS Chemical Biology
+    - "Biotechnol Bioeng"           # Biotechnology & Bioengineering
+    - "Mol Syst Biol"               # Molecular Systems Biology
+    - "Microb Cell Fact"            # Microbial Cell Factories
+    - "Appl Microbiol Biotechnol"   # Applied Microbiology and Biotechnology
+    - "Biotechnol J"                # Biotechnology Journal
+    - "Synth Syst Biotechnol"       # Synthetic and Systems Biotechnology
+    - "Nucleic Acids Res"           # Nucleic Acids Research
+
+user_open_general:
+  active: true
+  journals:
+    - "Elife"                       # eLife
+    - "EMBO J"                      # The EMBO Journal
+
+user_reviews:
+  active: true
+  journals:
+    - "Nat Rev Microbiol"           # Nature Reviews Microbiology
+    - "Nat Rev Drug Discov"         # Nature Reviews Drug Discovery
+    - "Trends Biotechnol"           # Trends in Biotechnology
+    - "Curr Opin Biotechnol"        # Current Opinion in Biotechnology
+    - "Curr Opin Chem Biol"         # Current Opinion in Chemical Biology
+
+user_chemistry_catalysis:
+  active: true
+  journals:
+    - "Nat Chem"                    # Nature Chemistry
+    - "Nat Synth"                   # Nature Synthesis
+    - "Nat Catal"                   # Nature Catalysis
+    - "Nat Mater"                   # Nature Materials
+    - "J Am Chem Soc"               # JACS
+    - "JACS Au"
+    - "ACS Catal"                   # ACS Catalysis
+    - "Biochemistry"
+    - "Angew Chem Int Ed Engl"      # Angewandte Chemie Int. Ed.
+
+# ============================================================================
+# 추가 권장 — Critical (SynBEE Lab 미션의 명백한 공백 보완)
+# ============================================================================
+
+added_critical_microbiome:
+  active: true
+  journals:
+    - "Cell Host Microbe"           # Mission 3 — microbiome 핵심
+    - "mBio"                        # Mission 3 — ASM 대표
+    - "mSystems"                    # Mission 3 — systems microbiology
+    - "ISME J"                      # Mission 3 — microbial ecology 1순위
+    - "Microbiome"                  # Mission 3 — microbiome 전용
+
+added_critical_tools_synbio:
+  active: true
+  journals:
+    - "Nat Methods"                 # Mission 2 — 신규 분자 도구 1차 발표지
+    - "CRISPR J"                    # Mission 2 — CRISPR 도구 전용
+    - "Synth Biol (Oxf)"            # synbio 1차 학술지 (Oxford)
+
+added_critical_natural_products:
+  active: true
+  journals:
+    - "Nat Prod Rep"                # Mission 1 — 천연물 최상위 리뷰지
+    - "J Nat Prod"                  # Mission 1 — 천연물 1차 (ACS)
+    - "Chembiochem"                 # Mission 1 — 효소공학·biosynthesis
+
+# ============================================================================
+# 추가 권장 — Medium (도메인별 보강, 노이즈 제어 가능)
+# ============================================================================
+
+added_medium_genome:
+  active: true
+  journals:
+    - "Genome Biol"                 # Mission 2
+    - "Genome Res"                  # Mission 2
+
+added_medium_chemistry_biology:
+  active: true
+  journals:
+    - "Chem Sci"                    # Mission 1 — RSC 화학생물학
+    - "Protein Sci"                 # Mission 1 — 효소 구조·기능
+    - "Protein Eng Des Sel"         # Mission 1 — 효소공학 전용
+
+added_medium_industrial_micro:
+  active: true
+  journals:
+    - "Appl Environ Microbiol"      # Mission 1·3 — 산업 균주 표준지
+    - "Metab Eng Commun"            # Mission 1 — Metab Eng 자매지 OA
+    - "Biotechnol Adv"              # 고임팩트 리뷰
+
+added_medium_microbiome_extra:
+  active: true
+  journals:
+    - "NPJ Biofilms Microbiomes"    # Mission 3
+    - "Gut Microbes"                # Mission 3
+
+# ============================================================================
+# Optional — 활성화 전 노이즈 검토 권장 (active: false로 시작)
+# ============================================================================
+
+optional_chemistry_side:
+  active: false
+  journals:
+    - "Org Lett"                    # 천연물 신규 구조·합성, 노이즈 가능
+    - "Org Biomol Chem"
+
+optional_rna:
+  active: false
+  journals:
+    - "RNA"                         # CSHL Press
+    - "RNA Biol"
+
+optional_industrial:
+  active: false
+  journals:
+    - "Bioresour Technol"           # 산업 발효, 노이즈 비율 높음
+
+# ============================================================================
+# bioRxiv 등 preprint — RSS / 별도 API
+# (PaperBee가 직접 처리. 저널명 필터 불필요)
+# ============================================================================
+
+preprint_subjects:
+  biorxiv:
+    - "synthetic_biology"
+    - "microbiology"
+    - "biochemistry"
+    - "molecular_biology"
+    - "bioengineering"
+  chemrxiv:
+    active: false                   # 활성화 전 검토
+    categories:
+      - "chemical-biology"
+      - "biochemistry"
+
+# ============================================================================
+# RSS 보충 — PubMed 인덱싱 지연 회피용 (top-tier 즉시 모니터링)
+# ============================================================================
+
+rss_feeds:
+  - name: "Nature"
+    url: "https://www.nature.com/nature.rss"
+  - name: "Nature Biotechnology"
+    url: "https://www.nature.com/nbt.rss"
+  - name: "Nature Chemical Biology"
+    url: "https://www.nature.com/nchembio.rss"
+  - name: "Nature Microbiology"
+    url: "https://www.nature.com/nmicrobiol.rss"
+  - name: "Nature Methods"
+    url: "https://www.nature.com/nmeth.rss"
+  - name: "Science"
+    url: "https://www.science.org/rss/news_current.xml"
+  - name: "Cell"
+    url: "https://www.cell.com/cell/current.rss"
+  - name: "Cell Host & Microbe"
+    url: "https://www.cell.com/cell-host-microbe/current.rss"
+  - name: "Metabolic Engineering"
+    url: "https://www.sciencedirect.com/journal/metabolic-engineering/rss"
+  - name: "bioRxiv synbio"
+    url: "https://connect.biorxiv.org/biorxiv_xml.php?subject=synthetic_biology"
+  - name: "bioRxiv microbiology"
+    url: "https://connect.biorxiv.org/biorxiv_xml.php?subject=microbiology"

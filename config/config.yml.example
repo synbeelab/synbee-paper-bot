@@ -1,0 +1,54 @@
+# SynBEE Lab Paper Bot — main configuration template
+#
+# Copy to config/config.yml and fill in. Do NOT commit config.yml (.gitignored).
+# Queries are auto-generated from journals.yml + keywords.yml via scripts/build_query.py.
+
+# --- Stage 1: paper sources ---
+sources:
+  pubmed:
+    enabled: true
+    # Auto-build via build_query.py if null
+    query: null
+    since_days: 1                    # cron interval
+  biorxiv:
+    enabled: true
+    query: null
+    since_days: 1
+  arxiv:
+    enabled: false                   # 처음엔 비활성화 — 노이즈 많음
+    categories: ["q-bio.BM", "q-bio.MN"]
+  rss:
+    enabled: true                    # journals.yml의 rss_feeds 사용
+    since_days: 1
+
+# --- Stage 2: LLM relevance filter ---
+llm_filter:
+  enabled: true
+  provider: "gemini"                 # "gemini" | "anthropic" | "openai" | "ollama"
+  model: "gemini-2.5-flash-lite"     # 가장 저렴 — Stage 2 yes/no 판정용
+  prompt_path: "config/filter_prompt.md"
+  min_score: 6                       # filter_prompt.md의 score 6 미만은 드롭
+  parallel_requests: 4
+  timeout_seconds: 30
+  # API key는 .env에서 GEMINI_API_KEY 로드
+
+# --- Slack ---
+slack:
+  enabled: true
+  bot_token_env: "SLACK_BOT_TOKEN"
+  channels:
+    daily_digest: ""                 # e.g., "C0XXXXXXXX" — #papers-daily
+    high_priority: ""                # e.g., 점수 9+ 별도 채널 (#papers-priority)
+    test: ""                         # 운영 전 테스트 채널
+  use_test_channel: true             # 첫 1주는 true 권장
+  max_posts_per_run: 15              # 폭주 방지
+
+# --- Storage ---
+storage:
+  seen_db: "data/seen.db"            # SQLite — 중복 푸시 방지
+  wiki_queue_table: "wiki_queue"     # "위키에 정리" 버튼 클릭 시 적재
+
+# --- Schedule (informational — 실제 cron은 .github/workflows에서 설정) ---
+schedule:
+  cron: "0 8 * * 1-5"                # 평일 KST 08:00
+  timezone: "Asia/Seoul"

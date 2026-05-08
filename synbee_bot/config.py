@@ -1,0 +1,114 @@
+"""Config loader — reads .env and config/*.yml."""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+import yaml
+
+try:
+    from dotenv import load_dotenv
+    _HAS_DOTENV = True
+except ImportError:
+    _HAS_DOTENV = False
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_DIR = PROJECT_ROOT / "config"
+
+
+@dataclass
+class Config:
+    # Sources
+    pubmed_enabled: bool
+    pubmed_since_days: int
+    biorxiv_enabled: bool
+    biorxiv_since_days: int
+    rss_enabled: bool
+    rss_since_days: int
+
+    # LLM filter
+    llm_enabled: bool
+    llm_provider: str
+    llm_model: str
+    llm_prompt_path: Path
+    llm_min_score: int
+    llm_parallel: int
+    llm_timeout: int
+
+    # Slack
+    slack_enabled: bool
+    slack_bot_token: str
+    slack_channel_daily: str
+    slack_channel_priority: str
+    slack_channel_test: str
+    slack_use_test: bool
+    slack_max_posts: int
+
+    # Storage
+    seen_db_path: Path
+
+    # Secrets
+    gemini_api_key: str
+    anthropic_api_key: str
+    ncbi_api_key: str
+    ncbi_email: str
+
+    def target_channel(self, score: int) -> str:
+        """Pick channel by score and test-mode flag."""
+        if self.slack_use_test and self.slack_channel_test:
+            return self.slack_channel_test
+        if score >= 9 and self.slack_channel_priority:
+            return self.slack_channel_priority
+        return self.slack_channel_daily
+
+
+def load_config(config_path: Path | None = None) -> Config:
+    """Load .env + config/config.yml. Falls back to config.yml.example for defaults."""
+    if _HAS_DOTENV:
+        load_dotenv(PROJECT_ROOT / ".env")
+
+    if config_path is None:
+        config_path = CONFIG_DIR / "config.yml"
+        if not config_path.exists():
+            config_path = CONFIG_DIR / "config.yml.example"
+    with config_path.open("r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    sources = cfg.get("sources", {})
+    pubmed = sources.get("pubmed", {})
+    biorxiv = sources.get("biorxiv", {})
+    rss = sources.get("rss", {})
+
+    llm = cfg.get("llm_filter", {})
+    slack = cfg.get("slack", {})
+    storage = cfg.get("storage", {})
+
+    return Config(
+        pubmed_enabled=bool(pubmed.get("enabled", True)),
+        pubmed_since_days=int(pubmed.get("since_days", 1)),
+        biorxiv_enabled=bool(biorxiv.get("enabled", True)),
+        biorxiv_since_days=int(biorxiv.get("since_days", 1)),
+        rss_enabled=bool(rss.get("enabled", True)),
+        rss_since_days=int(rss.get("since_days", 1)),
+        llm_enabled=bool(llm.get("enabled", True)),
+        llm_provider=str(llm.get("provider", "gemini")),
+        llm_model=str(llm.get("model", "gemini-2.5-flash-lite")),
+        llm_prompt_path=PROJECT_ROOT / str(llm.get("prompt_path", "config/filter_prompt.md")),
+        llm_min_score=int(llm.get("min_score", 6)),
+        llm_parallel=int(llm.get("parallel_requests", 4)),
+        llm_timeout=int(llm.get("timeout_seconds", 30)),
+        slack_enabled=bool(slack.get("enabled", True)),
+        slack_bot_token=os.environ.get(slack.get("bot_token_env", "SLACK_BOT_TOKEN"), ""),
+        slack_channel_daily=str(slack.get("channels", {}).get("daily_digest", "")),
+        slack_channel_priority=str(slack.get("channels", {}).get("high_priority", "")),
+        slack_channel_test=str(slack.get("channels", {}).get("test", "")),
+        slack_use_test=bool(slack.get("use_test_channel", True)),
+        slack_max_posts=int(slack.get("max_posts_per_run", 15)),
+        seen_db_path=PROJECT_ROOT / str(storage.get("seen_db", "data/seen.db")),
+        gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
+        anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+        ncbi_api_key=os.environ.get("NCBI_API_KEY", ""),
+        ncbi_email=os.environ.get("NCBI_EMAIL", "dosoyang@korea.ac.kr"),
+    )

@@ -1,0 +1,30 @@
+# Core
+PyYAML>=6.0
+requests>=2.31
+
+# PaperBee 본체 (Pipeline A 알림 엔진)
+# 주석 해제 후 패치 가능 — 우선은 직접 제어로 시작
+# paperbee>=1.2.0
+
+# 논문 메타데이터 수집 (PubMed + bioRxiv + arXiv)
+paperscraper>=0.2.10
+
+# RSS 피드
+feedparser>=6.0.10
+
+# Slack
+slack-bolt>=1.18.0
+slack-sdk>=3.27.0
+
+# LLM SDKs (필요한 것만 활성화)
+google-generativeai>=0.8.0          # Gemini — Stage 2 필터 + 요약
+anthropic>=0.40.0                    # Claude — 품질 검증·sanity check 용
+# openai>=1.50.0
+
+# Util
+python-dotenv>=1.0.0
+tenacity>=9.0.0                     # API 재시도
+
+# Dev
+pytest>=8.0.0
+ruff>=0.6.0

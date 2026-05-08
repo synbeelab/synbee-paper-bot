@@ -1,0 +1,44 @@
+name: Sanity check (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      windows:
+        description: "Day windows (space-separated)"
+        required: false
+        default: "1 7 30 365"
+      per_journal:
+        description: "Per-journal breakdown (slow)"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  sanity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install minimal deps
+        run: pip install pyyaml
+
+      - name: Run sanity check
+        env:
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+          NCBI_EMAIL: ${{ secrets.NCBI_EMAIL || 'dosoyang@korea.ac.kr' }}
+        run: |
+          ARGS="--windows ${{ inputs.windows }}"
+          if [ "${{ inputs.per_journal }}" = "true" ]; then
+            ARGS="$ARGS --per-journal"
+          fi
+          python scripts/sanity_check.py $ARGS

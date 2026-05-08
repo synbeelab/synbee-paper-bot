@@ -1,0 +1,150 @@
+# SynBEE Lab 키워드 그룹
+#
+# - 미션별로 그룹화. Stage 1 PubMed 쿼리에 OR로 펼쳐짐.
+# - exclude는 PubMed 쿼리에서 AND NOT으로 제거.
+# - 각 키워드는 PubMed의 "Title/Abstract" 검색 필드([tiab])로 매핑됨.
+#   원본 그대로 검색하려면 useTitleAbstract=false 옵션을 build_query.py에서 끔.
+
+# ============================================================================
+# Mission 1 — 미생물 세포 공장·효소 개량 → 천연물 및 유도체 생산
+# ============================================================================
+
+mission1_natural_products_enzymes:
+  active: true
+  keywords:
+    # 천연물 생합성
+    - "polyketide"
+    - "polyketide synthase"
+    - "nonribosomal peptide"
+    - "NRPS"
+    - "natural product biosynthesis"
+    - "secondary metabolite"
+    - "biosynthetic gene cluster"
+    - "BGC"
+    - "terpenoid biosynthesis"
+    - "terpene synthase"
+    - "alkaloid biosynthesis"
+    - "flavonoid biosynthesis"
+    # 효소공학
+    - "directed evolution"
+    - "enzyme engineering"
+    - "rational enzyme design"
+    - "computational enzyme design"
+    - "de novo enzyme design"
+    - "AlphaFold enzyme"
+    - "ProteinMPNN"
+    - "ESMFold"
+    - "high-throughput enzyme screening"
+    # 미생물 균주·세포 공장
+    - "metabolic engineering"
+    - "microbial cell factory"
+    - "microbial chassis"
+    - "Streptomyces"
+    - "Saccharopolyspora"
+    - "actinomycete"
+    - "Corynebacterium glutamicum"
+
+# ============================================================================
+# Mission 2 — Genome / RNA-based gene expression manipulation tools
+# ============================================================================
+
+mission2_genome_rna_tools:
+  active: true
+  keywords:
+    # RNA 도구
+    - "synthetic sRNA"
+    - "small regulatory RNA"
+    - "antisense RNA"
+    - "RNA-based gene regulation"
+    - "riboswitch"
+    - "ribozyme"
+    # CRISPR
+    - "CRISPR interference"
+    - "CRISPRi"
+    - "CRISPR activation"
+    - "CRISPRa"
+    - "base editor"
+    - "prime editor"
+    - "Cas12"
+    - "Cas13"
+    # 바이오센서
+    - "transcription factor biosensor"
+    - "metabolite biosensor"
+    - "fluorescent biosensor"
+    - "RNA aptamer biosensor"
+    # 게놈 엔지니어링·바이오파운드리
+    - "genome scale engineering"
+    - "MAGE"
+    - "recombineering"
+    - "biofoundry"
+    - "DNA assembly"
+
+# ============================================================================
+# Mission 3 — Probiotic / commensal bacteria engineering for diagnostics·therapy
+# ============================================================================
+
+mission3_probiotic_microbiome:
+  active: true
+  keywords:
+    # 생균치료·진단
+    - "engineered probiotic"
+    - "live biotherapeutic"
+    - "live biotherapeutic product"
+    - "engineered live therapy"
+    - "diagnostic bacteria"
+    - "bacterial biosensor"
+    - "synthetic biology therapy"
+    # 핵심 균주
+    - "Escherichia coli Nissle"
+    - "Lactobacillus engineering"
+    - "Lactococcus engineering"
+    - "Bacteroides engineering"
+    # microbiome
+    - "engineered microbiome"
+    - "synthetic microbial community"
+    - "synthetic microbial consortium"
+    - "gut microbiome engineering"
+    - "phage therapy engineered"
+    - "engineered phage"
+
+# ============================================================================
+# Auxiliary — 주변부, 우선순위 낮음
+# ============================================================================
+
+auxiliary:
+  active: true
+  keywords:
+    - "synthetic biology"            # 너무 광범위 — Stage 2에서 강하게 거름
+    - "machine learning enzyme"
+    - "machine learning protein"
+    - "deep learning biosynthesis"
+
+# ============================================================================
+# Exclude — PubMed AND NOT으로 제거 (false positive 패턴)
+# ============================================================================
+# 처음엔 보수적으로 시작. 운영 1~2주 후 노이즈 패턴 보고 추가.
+
+exclude:
+  active: true
+  keywords:
+    - "human clinical trial"
+    - "phase III trial"
+    - "phase 3 trial"
+    - "cancer chemotherapy"
+    - "plant breeding"
+    - "crop improvement"
+    - "veterinary"
+    - "dental"
+    - "cosmetic"
+
+# ============================================================================
+# 옵션 — 너무 잡다한 검색 결과를 막기 위한 추가 제약
+# ============================================================================
+
+constraints:
+  # 검색 필드 (PubMed: tiab=Title/Abstract, ti=Title only, all=any field)
+  search_field: "tiab"
+  # 영어 논문만
+  language_filter: true
+  # 동물 모델·세포 종류 제약 — 너무 강하게 걸지 말 것 (false negative 위험)
+  exclude_pure_clinical: true
