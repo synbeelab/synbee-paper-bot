@@ -3,7 +3,7 @@ name: SynBEE daily paper digest
 on:
   schedule:
     # 매일 KST 08:00 = UTC 23:00 (전날). cron은 UTC.
-    - cron: "0 23 * * 0-4"   # Sun~Thu UTC = Mon~Fri KST
+    - cron: "0 23 * * *"     # 매일 UTC 23:00 = 매일 KST 08:00 (주말 포함)
   workflow_dispatch:
     inputs:
       since_days:
