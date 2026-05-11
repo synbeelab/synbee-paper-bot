@@ -49,7 +49,13 @@ slack:
 # --- Storage ---
 storage:
   seen_db: "data/seen.db"            # SQLite — 중복 푸시 방지
-  wiki_queue_table: "wiki_queue"     # "위키에 정리" 버튼 클릭 시 적재
+
+# --- Wiki queue (GitHub Issue + local raw/ ingest) ---
+# "📥 위키 후보 등록" 버튼 클릭 시 wiki-queue 라벨 GitHub Issue 생성 페이지를 엶.
+# 사용자가 Submit → process_wiki_queue.py로 raw/에 markdown 저장 → 수동 wiki 정리.
+wiki_queue:
+  github_repo: "synbeelab/synbee-paper-bot"           # "owner/repo" — 빈 문자열이면 버튼 숨김
+  vault_raw_dir: "D:/Obsidian_Vault/Dongsoo/raw"      # 로컬 SynBEE Wiki raw/ 디렉터리
 
 # --- Schedule (informational — 실제 cron은 .github/workflows에서 설정) ---
 schedule:

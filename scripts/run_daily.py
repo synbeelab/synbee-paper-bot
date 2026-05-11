@@ -189,7 +189,9 @@ def main() -> int:
                 "posted": len(passing),
             }
             _human_log(f"Posting {len(passing)} to Slack channel {target}…")
-            posted = post_papers(cfg.slack_bot_token, target, passing, summary=summary)
+            posted = post_papers(cfg.slack_bot_token, target, passing,
+                                 summary=summary,
+                                 github_repo=cfg.wiki_github_repo)
             _human_log(f"Posted {posted} messages.")
     elif args.dry_run:
         _human_log("Dry run — Slack push skipped, DB not updated.")

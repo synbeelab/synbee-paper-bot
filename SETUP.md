@@ -427,11 +427,63 @@ repo → **Actions → SynBEE daily paper digest → Run workflow**
 
 ---
 
-## 9. 다음 단계
+## 9. Wiki 후보 등록 워크플로우 (GitHub Issue 기반)
+
+Slack 메시지의 **"📥 위키 후보 등록"** 버튼을 클릭하면 미리 채워진 GitHub
+Issue 생성 페이지가 새 탭으로 열립니다. **Submit new issue**만 누르면
+`wiki-queue` 라벨이 붙은 Issue가 생성됨.
+
+이 Issue들을 로컬에서 일괄 처리하여 `D:\Obsidian_Vault\Dongsoo\raw\`에
+markdown으로 저장:
+
+### 9.1 사전 — gh CLI 인증
+
+```powershell
+gh --version            # 설치 확인
+gh auth status          # 인증 확인. 미인증 시:
+gh auth login           # 브라우저 인증 진행
+```
+
+### 9.2 큐 처리
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+
+# 미리보기 (파일 안 씀, Issue 안 닫음)
+python scripts\process_wiki_queue.py --dry-run
+
+# 실제 처리 — raw/에 markdown 저장 (Issue는 열어둠)
+python scripts\process_wiki_queue.py
+
+# 처리 + Issue 자동 close
+python scripts\process_wiki_queue.py --close
+```
+
+생성된 파일: `D:\Obsidian_Vault\Dongsoo\raw\YYYYMMDD_<slug>.md`
+
+각 markdown에는 paper_id·journal·DOI·KR/EN 요약·Abstract·GitHub Issue 링크가
+frontmatter + 본문으로 포함됨.
+
+### 9.3 SynBEE Wiki에서 정리
+
+```
+"raw/20260511_engineered-polyketide-synthase.md 정리해줘"
+```
+
+별도 Claude 세션에서 위 trigger를 던지면 `D:\Obsidian_Vault\Dongsoo\CLAUDE.md`의
+**모드 A** 절차로 wiki 페이지 생성됨.
+
+### 9.4 운영 팁
+
+- 주 1회 처리: 금요일 오후에 `python scripts\process_wiki_queue.py --close`
+- 라벨 변경 시 wiki-queue 외에 mission별 라벨(`mission-1`, `mission-2`, `mission-3`)도
+  GitHub Issue UI에서 수동으로 추가 가능
+
+---
+
+## 10. 다음 단계
 
 - [ ] **Pipeline B 시작** — `D:\AI_Projects\synbee-pdf-bot\` 별도 repo로 PDF 심층 요약 봇 구축. `DIRECTION.md` 참조.
-- [ ] "📥 위키 후보 저장" 버튼이 실제로 SynBEE Wiki(`D:\Obsidian_Vault\Dongsoo`)의
-      모드 A를 트리거하도록 `process_queue.py` 작성 (Slack Interactivity + 공인 URL 또는 Socket Mode 필요)
 - [ ] 월 1회 Sonnet 4.6 vs Gemini 비교 회귀 테스트 (`ANTHROPIC_API_KEY` 활용)
 - [ ] 키워드/저널 튜닝 자동화 — `scripts/tune.py` 작성
 

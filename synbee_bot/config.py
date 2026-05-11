@@ -50,6 +50,10 @@ class Config:
     # Storage
     seen_db_path: Path
 
+    # Wiki queue (GitHub Issue + local raw/ ingest)
+    wiki_github_repo: str             # "owner/repo" — for "위키 후보" button URL
+    wiki_vault_raw_dir: Path          # local raw/ directory for process_wiki_queue.py
+
     # Secrets
     gemini_api_key: str
     anthropic_api_key: str
@@ -85,6 +89,7 @@ def load_config(config_path: Path | None = None) -> Config:
     llm = cfg.get("llm_filter", {})
     slack = cfg.get("slack", {})
     storage = cfg.get("storage", {})
+    wiki = cfg.get("wiki_queue", {})
 
     return Config(
         pubmed_enabled=bool(pubmed.get("enabled", True)),
@@ -109,6 +114,8 @@ def load_config(config_path: Path | None = None) -> Config:
         slack_use_test=bool(slack.get("use_test_channel", True)),
         slack_max_posts=int(slack.get("max_posts_per_run", 15)),
         seen_db_path=PROJECT_ROOT / str(storage.get("seen_db", "data/seen.db")),
+        wiki_github_repo=str(wiki.get("github_repo", "")),
+        wiki_vault_raw_dir=Path(str(wiki.get("vault_raw_dir", "D:/Obsidian_Vault/Dongsoo/raw"))),
         gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
         ncbi_api_key=os.environ.get("NCBI_API_KEY", ""),
