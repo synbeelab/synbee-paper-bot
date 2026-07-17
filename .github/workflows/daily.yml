@@ -129,3 +129,13 @@ jobs:
             data/seen.db
           if-no-files-found: ignore
           retention-days: 14
+
+  # 60일 무활동 시 GitHub가 스케줄 워크플로우를 자동 비활성화하는 것을 방지.
+  # 매 실행마다 워크플로우를 재활성화해 비활성 타이머를 리셋한다.
+  # https://github.com/liskin/gh-workflow-keepalive
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: liskin/gh-workflow-keepalive@v1
