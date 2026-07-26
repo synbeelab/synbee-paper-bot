@@ -153,7 +153,7 @@ def fetch_from_pubmed(since_days: int) -> list[Paper]:
     return pubmed_fetch_papers(pmids)
 
 
-def fetch_from_pubmed_journals_only(since_days: int, retmax: int = 1000) -> list[Paper]:
+def fetch_from_pubmed_journals_only(since_days: int, retmax: int = 2000) -> list[Paper]:
     """Weekly sweep: ALL papers in the whitelisted journals in the window,
     no keyword gate. LLM filter downstream decides relevance."""
     journals_yaml = _load_yaml(ROOT / "config" / "journals.yml")

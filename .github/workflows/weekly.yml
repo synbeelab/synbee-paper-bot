@@ -48,11 +48,11 @@ jobs:
       - name: Validate secrets
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           missing=0
           [ -z "$SLACK_BOT_TOKEN" ] && echo "❌ SLACK_BOT_TOKEN missing" && missing=1
-          [ -z "$ANTHROPIC_API_KEY" ] && echo "❌ ANTHROPIC_API_KEY missing" && missing=1
+          [ -z "$GEMINI_API_KEY" ] && echo "❌ GEMINI_API_KEY missing" && missing=1
           [ $missing -eq 1 ] && exit 1
           echo "✓ Required secrets present"
 

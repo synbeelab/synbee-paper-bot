@@ -93,7 +93,7 @@ def main() -> int:
                 new_papers, prompt=prompt,
                 provider=provider, model=cfg.weekly_llm_model,
                 fallback_models=cfg.weekly_llm_fallback_models,
-                api_key=api_key, parallel=cfg.llm_parallel, timeout=cfg.llm_timeout,
+                api_key=api_key, parallel=8, timeout=cfg.llm_timeout,
             )
     else:
         results = [(p, Verdict("YES", None, 5, "(LLM filter disabled)")) for p in new_papers]
