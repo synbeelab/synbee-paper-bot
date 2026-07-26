@@ -31,7 +31,7 @@ from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.slack_dispatch import post_papers  # noqa: E402
-from synbee_bot.sources import fetch_from_pubmed_journals_only  # noqa: E402
+from synbee_bot.sources import fetch_from_pubmed_weekly  # noqa: E402
 from synbee_bot.storage import SeenDB  # noqa: E402
 
 WEEKLY_TITLE = "🐝 SynBEE 주간 논문 다이제스트 (delta)"
@@ -60,8 +60,8 @@ def main() -> int:
     min_score = args.min_score if args.min_score is not None else cfg.weekly_min_score
     db = SeenDB(cfg.seen_db_path)
 
-    _log(f"Weekly journal-only PubMed sweep (since {since}d)…")
-    flat = fetch_from_pubmed_journals_only(since_days=since)
+    _log(f"Weekly keyword+journal PubMed sweep (since {since}d)…")
+    flat = fetch_from_pubmed_weekly(since_days=since)
     if args.limit:
         flat = flat[: args.limit]
     _log(f"  pubmed(journal-only): {len(flat)} papers")

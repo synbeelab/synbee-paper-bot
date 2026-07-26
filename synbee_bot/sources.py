@@ -153,6 +153,44 @@ def fetch_from_pubmed(since_days: int) -> list[Paper]:
     return pubmed_fetch_papers(pmids)
 
 
+# Gap keywords the DAILY list misses — added ONLY to the weekly sweep so it
+# surfaces relevant papers whose titles/abstracts don't hit the narrower daily net.
+WEEKLY_EXTRA_KEYWORDS = [
+    "biocatalysis", "biocatalyst", "whole-cell biocatalysis", "enzyme cascade",
+    "cell factory", "cell factories", "chassis", "strain engineering",
+    "protein evolution", "enzyme evolution", "de novo protein", "protein design",
+    "cofactor engineering", "peroxygenase", "halogenase", "cytochrome P450",
+    "glycosyltransferase", "methyltransferase", "aminotransferase", "transaminase",
+    "decarboxylase", "heterologous expression", "biosynthetic pathway", "bioconversion",
+    "genetic code expansion", "noncanonical amino acid", "orthogonal translation",
+    "cell-free", "in vitro translation", "RiPP", "lasso peptide", "lanthipeptide",
+    "thiopeptide", "siderophore", "adaptive laboratory evolution",
+    "DNAzyme", "genetic circuit", "gene circuit", "phage engineering",
+    "engineered bacteriophage",
+]
+
+
+def fetch_from_pubmed_weekly(since_days: int, retmax: int = 1500) -> list[Paper]:
+    """Weekly sweep: broadened keyword net (daily keywords + WEEKLY_EXTRA_KEYWORDS)
+    AND the journal whitelist. Bounded volume; catches relevant papers whose
+    titles miss the narrower daily keyword list. Delta vs seen.db removes
+    everything the daily bot already collected."""
+    journals_yaml = _load_yaml(ROOT / "config" / "journals.yml")
+    keywords_yaml = _load_yaml(ROOT / "config" / "keywords.yml")
+    constraints = keywords_yaml.get("constraints", {}) or {}
+    keywords = collect_keywords(keywords_yaml, include_aux=True)
+    keywords["mission"] = sorted(set(keywords["mission"]) | set(WEEKLY_EXTRA_KEYWORDS))
+    journals = collect_journals(journals_yaml)
+    query = build_pubmed_query(
+        journals, keywords,
+        search_field=constraints.get("search_field", "tiab"),
+        journal_filter=True,
+        language_filter=bool(constraints.get("language_filter", True)),
+    )
+    pmids = pubmed_search_pmids(query, since_days=since_days, retmax=retmax)
+    return pubmed_fetch_papers(pmids)
+
+
 def fetch_from_pubmed_journals_only(since_days: int, retmax: int = 2000) -> list[Paper]:
     """Weekly sweep: ALL papers in the whitelisted journals in the window,
     no keyword gate. LLM filter downstream decides relevance."""
