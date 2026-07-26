@@ -1,0 +1,51 @@
+name: SynBEE schedule briefing ping
+
+# Posts a one-line push notification to #일정 so Prof. Yang gets a phone alert.
+# The full briefing itself is generated + posted (as the user) by a separate
+# claude.ai cloud routine at 07:50 KST; this bot ping (a different identity)
+# is what actually triggers a Slack push. The bot must be a member of #일정.
+
+on:
+  schedule:
+    - cron: "0 23 * * *"     # 08:00 KST daily (10 min after the 07:50 briefing routine)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: synbee-schedule-ping
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Push ping to #일정
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SCHEDULE_CHANNEL: "C0BKW7H4ABU"
+        run: |
+          python3 - <<'PY'
+          import os, json, urllib.request
+          tok = os.environ["SLACK_BOT_TOKEN"]
+          if not tok:
+              raise SystemExit("SLACK_BOT_TOKEN missing")
+          payload = {
+              "channel": os.environ["SCHEDULE_CHANNEL"],
+              "text": ":calendar: 오늘의 일정 브리핑이 #일정에 올라왔어요 — 확인하세요!",
+              "unfurl_links": False,
+              "unfurl_media": False,
+          }
+          req = urllib.request.Request(
+              "https://slack.com/api/chat.postMessage",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Authorization": f"Bearer {tok}",
+                       "Content-Type": "application/json; charset=utf-8"},
+          )
+          r = json.loads(urllib.request.urlopen(req, timeout=30).read())
+          print(r)
+          if not r.get("ok"):
+              raise SystemExit(f"Slack error: {r.get('error')}")
+          PY
