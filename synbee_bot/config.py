@@ -47,6 +47,16 @@ class Config:
     slack_use_test: bool
     slack_max_posts: int
 
+    # Weekly journal-sweep digest (delta vs daily)
+    weekly_enabled: bool
+    weekly_channel: str
+    weekly_since_days: int
+    weekly_min_score: int
+    weekly_max_posts: int
+    weekly_llm_provider: str
+    weekly_llm_model: str
+    weekly_llm_fallback_models: list[str]
+
     # Storage
     seen_db_path: Path
 
@@ -90,6 +100,8 @@ def load_config(config_path: Path | None = None) -> Config:
     slack = cfg.get("slack", {})
     storage = cfg.get("storage", {})
     wiki = cfg.get("wiki_queue", {})
+    weekly = cfg.get("weekly", {}) or {}
+    weekly_llm = weekly.get("llm", {}) or {}
 
     return Config(
         pubmed_enabled=bool(pubmed.get("enabled", True)),
@@ -113,6 +125,14 @@ def load_config(config_path: Path | None = None) -> Config:
         slack_channel_test=str(slack.get("channels", {}).get("test", "")),
         slack_use_test=bool(slack.get("use_test_channel", True)),
         slack_max_posts=int(slack.get("max_posts_per_run", 15)),
+        weekly_enabled=bool(weekly.get("enabled", True)),
+        weekly_channel=str(weekly.get("channel", "")),
+        weekly_since_days=int(weekly.get("since_days", 7)),
+        weekly_min_score=int(weekly.get("min_score", 6)),
+        weekly_max_posts=int(weekly.get("max_posts", 25)),
+        weekly_llm_provider=str(weekly_llm.get("provider", "anthropic")),
+        weekly_llm_model=str(weekly_llm.get("model", "claude-haiku-4-5-20251001")),
+        weekly_llm_fallback_models=[str(m) for m in (weekly_llm.get("fallback_models") or [])],
         seen_db_path=PROJECT_ROOT / str(storage.get("seen_db", "data/seen.db")),
         wiki_github_repo=str(wiki.get("github_repo", "")),
         wiki_vault_raw_dir=Path(str(wiki.get("vault_raw_dir", "D:/Obsidian_Vault/Dongsoo/raw"))),

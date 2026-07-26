@@ -1,0 +1,108 @@
+name: SynBEE weekly journal digest
+
+on:
+  schedule:
+    # 매주 월 KST 08:30 = 일 UTC 23:30. (월요일 daily 08:00 실행 30분 뒤 → daily가 먼저 seen.db 갱신)
+    - cron: "30 23 * * 0"     # Sun 23:30 UTC = Mon 08:30 KST
+  workflow_dispatch:
+    inputs:
+      since_days:
+        description: "Override since_days (default 7)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Dry run (no Slack push)"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: synbee-weekly
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate secrets
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          missing=0
+          [ -z "$SLACK_BOT_TOKEN" ] && echo "❌ SLACK_BOT_TOKEN missing" && missing=1
+          [ -z "$ANTHROPIC_API_KEY" ] && echo "❌ ANTHROPIC_API_KEY missing" && missing=1
+          [ $missing -eq 1 ] && exit 1
+          echo "✓ Required secrets present"
+
+      # seen.db 캐시 — daily와 공유 (restore-keys 프리픽스 매칭으로 daily 최신 저장분을 복원)
+      - name: Restore seen.db cache
+        id: cache-seen
+        uses: actions/cache/restore@v4
+        with:
+          path: data/seen.db
+          key: synbee-seen-${{ github.run_id }}
+          restore-keys: |
+            synbee-seen-
+
+      - name: Render config.yml
+        run: |
+          cp config/config.yml.example config/config.yml
+          echo "Rendered config/config.yml (weekly channel hardcoded)"
+
+      - name: Run weekly digest
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
+          NCBI_EMAIL: ${{ secrets.NCBI_EMAIL || 'dosoyang@korea.ac.kr' }}
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.since_days }}" ]; then
+            ARGS="$ARGS --since-days ${{ inputs.since_days }}"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python scripts/run_weekly.py $ARGS
+
+      - name: Save seen.db cache (always)
+        if: always() && hashFiles('data/seen.db') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: data/seen.db
+          key: synbee-seen-${{ github.run_id }}
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-run-log-${{ github.run_id }}
+          path: |
+            data/*.log
+            data/seen.db
+          if-no-files-found: ignore
+          retention-days: 14

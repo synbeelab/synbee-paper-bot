@@ -17,7 +17,7 @@ from .models import Paper
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from build_query import (  # noqa: E402
-    _load_yaml, build_pubmed_query, build_biorxiv_query,
+    _load_yaml, build_pubmed_query, build_pubmed_journal_query, build_biorxiv_query,
     collect_journals, collect_keywords,
 )
 
@@ -150,6 +150,22 @@ def fetch_from_pubmed(since_days: int) -> list[Paper]:
         language_filter=bool(constraints.get("language_filter", True)),
     )
     pmids = pubmed_search_pmids(query, since_days=since_days)
+    return pubmed_fetch_papers(pmids)
+
+
+def fetch_from_pubmed_journals_only(since_days: int, retmax: int = 1000) -> list[Paper]:
+    """Weekly sweep: ALL papers in the whitelisted journals in the window,
+    no keyword gate. LLM filter downstream decides relevance."""
+    journals_yaml = _load_yaml(ROOT / "config" / "journals.yml")
+    keywords_yaml = _load_yaml(ROOT / "config" / "keywords.yml")
+    constraints = keywords_yaml.get("constraints", {}) or {}
+    keywords = collect_keywords(keywords_yaml, include_aux=True)
+    journals = collect_journals(journals_yaml)
+    query = build_pubmed_journal_query(
+        journals, exclude=keywords["exclude"],
+        language_filter=bool(constraints.get("language_filter", True)),
+    )
+    pmids = pubmed_search_pmids(query, since_days=since_days, retmax=retmax)
     return pubmed_fetch_papers(pmids)
 
 

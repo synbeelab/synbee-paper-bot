@@ -122,6 +122,26 @@ def build_pubmed_query(
     return query
 
 
+def build_pubmed_journal_query(
+    journals: list[str],
+    exclude: list[str] | None = None,
+    *,
+    language_filter: bool = True,
+) -> str:
+    """Journal-only PubMed query (NO keyword gate) — every paper in the
+    whitelisted journals, minus the exclude terms. Used by the weekly sweep."""
+    if not journals:
+        raise ValueError("No active journals for journal-only query")
+    j_clause = " OR ".join(f'"{j}"[Journal]' for j in journals)
+    query = f"({j_clause})"
+    if exclude:
+        ex_clause = " OR ".join(f"{_quote(k)}[tiab]" for k in exclude)
+        query = f"({query}) NOT ({ex_clause})"
+    if language_filter:
+        query = f"({query}) AND English[Language]"
+    return query
+
+
 def build_biorxiv_query(keywords: dict[str, list[str]]) -> str:
     """bioRxiv: only 1-level OR allowed; no AND/AND NOT/journal."""
     mission_kw = keywords["mission"]

@@ -61,3 +61,18 @@ wiki_queue:
 schedule:
   cron: "0 8 * * 1-5"                # 평일 KST 08:00
   timezone: "Asia/Seoul"
+
+# --- Weekly journal-sweep digest (delta vs daily) ---
+# Journal-only PubMed sweep (no keyword gate) → dedup vs seen.db (excludes
+# everything the daily bot already saw) → LLM filter → post the delta.
+weekly:
+  enabled: true
+  channel: "C0BKDNLRFAT"             # #논문-알림 (hardcoded)
+  since_days: 7
+  min_score: 6
+  max_posts: 25
+  llm:
+    provider: "anthropic"            # Haiku — avoids daily Gemini free-tier quota
+    model: "claude-haiku-4-5-20251001"
+    fallback_models:
+      - "claude-3-5-haiku-latest"

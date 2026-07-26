@@ -93,10 +93,10 @@ def build_paper_blocks(paper: Paper, verdict: Verdict) -> list[dict]:
     return blocks
 
 
-def build_summary_blocks(stats: dict) -> list[dict]:
+def build_summary_blocks(stats: dict, title: str = "🐝 SynBEE 논문 알림") -> list[dict]:
     """Top-of-digest summary."""
     lines = [
-        f"*🐝 SynBEE 논문 알림 — {stats.get('date', 'today')}*",
+        f"*{title} — {stats.get('date', 'today')}*",
         (
             f"수집 {stats.get('collected', 0)}편 → "
             f"중복 제거 후 {stats.get('new', 0)}편 → "
@@ -123,8 +123,8 @@ def post_paper(client, channel: str, paper: Paper, verdict: Verdict) -> dict:
     )
 
 
-def post_summary(client, channel: str, stats: dict) -> dict:
-    blocks = build_summary_blocks(stats)
+def post_summary(client, channel: str, stats: dict, title: str = "🐝 SynBEE 논문 알림") -> dict:
+    blocks = build_summary_blocks(stats, title=title)
     return client.chat_postMessage(
         channel=channel, blocks=blocks,
         text=f"SynBEE digest: {stats.get('posted', 0)} papers",
@@ -141,7 +141,7 @@ def make_slack_client(token: str):
 
 
 def post_papers(token: str, channel: str, items: Iterable[tuple[Paper, Verdict]],
-                summary: dict | None = None) -> tuple[int, int]:
+                summary: dict | None = None, title: str = "🐝 SynBEE 논문 알림") -> tuple[int, int]:
     """Post per-paper messages, then a final digest summary reflecting the
     actual success/failure counts. Returns (posted, failed)."""
     client = make_slack_client(token)
@@ -160,7 +160,7 @@ def post_papers(token: str, channel: str, items: Iterable[tuple[Paper, Verdict]]
         final["posted"] = posted
         final["failed"] = failed
         try:
-            post_summary(client, channel, final)
+            post_summary(client, channel, final, title=title)
         except Exception as e:
             sys.stderr.write(f"summary post failed: {e}\n")
     return posted, failed
