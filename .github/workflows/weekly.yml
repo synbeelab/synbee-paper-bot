@@ -2,8 +2,10 @@ name: SynBEE weekly journal digest
 
 on:
   schedule:
-    # 매주 월 KST 08:30 = 일 UTC 23:30. (월요일 daily 08:00 실행 30분 뒤 → daily가 먼저 seen.db 갱신)
-    - cron: "30 23 * * 0"     # Sun 23:30 UTC = Mon 08:30 KST
+    # 매주 토 KST 08:30 = 금 UTC 23:30. (토요일 daily 08:00 실행 30분 뒤 → daily가 먼저 seen.db 갱신)
+    # 08:00 정각으로 앞당기면 daily와 동시 실행되어 seen.db 캐시 복원 경합이 생기고
+    # 그 주 토요일 논문이 daily/weekly에 중복 게시된다. 30분 오프셋을 유지할 것.
+    - cron: "30 23 * * 5"     # Fri 23:30 UTC = Sat 08:30 KST
   workflow_dispatch:
     inputs:
       since_days:
