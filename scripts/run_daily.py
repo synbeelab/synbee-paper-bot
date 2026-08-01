@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from synbee_bot.config import load_config  # noqa: E402
-from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
+from synbee_bot.filter import filter_batch, format_usage_summary, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.slack_dispatch import post_papers  # noqa: E402
 from synbee_bot.sources import collect_all  # noqa: E402
@@ -118,7 +118,9 @@ def main() -> int:
                 fallback_models=cfg.llm_fallback_models,
                 api_key=api_key, parallel=cfg.llm_parallel,
                 timeout=cfg.llm_timeout,
+                thinking_budget=cfg.llm_thinking_budget,
             )
+            _human_log(format_usage_summary(cfg.llm_model))
     else:
         results = [(p, Verdict("YES", None, 5, "(LLM filter disabled)")) for p in new_papers]
 

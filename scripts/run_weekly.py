@@ -3,8 +3,9 @@ SynBEE Paper Bot — WEEKLY journal-sweep digest ("delta" vs daily).
 
 Queries PubMed by JOURNAL ONLY (no keyword gate) for the last N days, dedups
 against the SAME seen.db the daily bot uses (so daily-caught papers are
-excluded), LLM-filters with Anthropic Haiku, and posts the delta to the weekly
-Slack channel (#논문-알림).
+excluded), LLM-filters with the provider configured under `weekly.llm`
+(currently Gemini 2.5 Flash), and posts the delta to the weekly Slack channel
+(#논문-알림).
 
 Usage:
     python scripts/run_weekly.py
@@ -28,7 +29,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from synbee_bot.config import load_config  # noqa: E402
-from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
+from synbee_bot.filter import filter_batch, format_usage_summary, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.slack_dispatch import post_papers  # noqa: E402
 from synbee_bot.sources import fetch_from_pubmed_weekly  # noqa: E402
@@ -94,7 +95,9 @@ def main() -> int:
                 provider=provider, model=cfg.weekly_llm_model,
                 fallback_models=cfg.weekly_llm_fallback_models,
                 api_key=api_key, parallel=8, timeout=cfg.llm_timeout,
+                thinking_budget=cfg.llm_thinking_budget,
             )
+            _log(format_usage_summary(cfg.weekly_llm_model))
     else:
         results = [(p, Verdict("YES", None, 5, "(LLM filter disabled)")) for p in new_papers]
 

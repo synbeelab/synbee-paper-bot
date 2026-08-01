@@ -37,6 +37,7 @@ class Config:
     llm_min_score: int
     llm_parallel: int
     llm_timeout: int
+    llm_thinking_budget: int
 
     # Slack
     slack_enabled: bool
@@ -118,6 +119,7 @@ def load_config(config_path: Path | None = None) -> Config:
         llm_min_score=int(llm.get("min_score", 6)),
         llm_parallel=int(llm.get("parallel_requests", 4)),
         llm_timeout=int(llm.get("timeout_seconds", 30)),
+        llm_thinking_budget=int(llm.get("thinking_budget", 1024)),
         slack_enabled=bool(slack.get("enabled", True)),
         slack_bot_token=os.environ.get(slack.get("bot_token_env", "SLACK_BOT_TOKEN"), ""),
         slack_channel_daily=str(slack.get("channels", {}).get("daily_digest", "")),

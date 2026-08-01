@@ -33,6 +33,11 @@ llm_filter:
   min_score: 6                       # filter_prompt.md의 score 6 미만은 드롭
   parallel_requests: 4
   timeout_seconds: 30
+  # Gemini 2.5 thinking 토큰 상한. thinking은 출력 요금($2.50/1M)으로 과금되며,
+  # 미지정 시 dynamic(실측 ~1,900 토큰/콜)으로 전체 비용의 약 85%를 차지했다.
+  # 1024로 제한 시 비용 약 48% 절감, min_score 게이트 뒤집힘 1/16.
+  # 0으로 내리면 경계 논문(score 7~8)을 1점으로 오판해 조용히 누락시키므로 금지.
+  thinking_budget: 1024
   # API key는 .env에서 GEMINI_API_KEY 로드
 
 # --- Slack ---
