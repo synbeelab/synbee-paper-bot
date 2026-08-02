@@ -32,7 +32,7 @@ from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.slack_dispatch import post_papers  # noqa: E402
 from synbee_bot.sources import fetch_from_pubmed_weekly  # noqa: E402
-from synbee_bot.storage import SeenDB  # noqa: E402
+from synbee_bot.storage import SeenDB, split_persist_vs_retry  # noqa: E402
 
 WEEKLY_TITLE = "🐝 SynBEE 주간 논문 다이제스트 (delta)"
 
@@ -101,7 +101,15 @@ def main() -> int:
     results.sort(key=lambda pv: -pv[1].score)
     passing = [(p, v) for p, v in results if v.is_yes and v.score >= min_score]
     _log(f"Filter: {len(passing)} pass / {len(results)} total (min_score={min_score})")
-    passing = passing[: cfg.weekly_max_posts]
+
+    # Optional post cap (default: none). Excess is held back for the next run
+    # rather than dropped, since a dropped paper would be marked seen and lost.
+    held_back: list[tuple[Paper, Verdict]] = []
+    if cfg.weekly_max_posts is not None and len(passing) > cfg.weekly_max_posts:
+        held_back = passing[cfg.weekly_max_posts:]
+        passing = passing[: cfg.weekly_max_posts]
+        _log(f"⚠️  post cap {cfg.weekly_max_posts} hit — holding back "
+             f"{len(held_back)} passing papers for the next run (not marked seen)")
 
     print()
     for p, v in passing:
@@ -111,12 +119,10 @@ def main() -> int:
             print(f"     KR: {v.one_liner}")
         print(f"     {p.url}")
 
-    if not args.dry_run:
-        for p, v in results:
-            db.mark_seen(p, v)
-        _log(f"Persisted {len(results)} verdicts to seen.db")
-
+    # Post BEFORE persisting: a paper is only marked seen once it actually
+    # reached Slack, otherwise a failed post loses it permanently.
     posted = 0
+    post_failures: list[tuple[Paper, Verdict]] = []
     if (not args.no_slack and not args.dry_run and cfg.slack_enabled
             and cfg.slack_bot_token and cfg.weekly_channel and passing):
         summary = {
@@ -126,11 +132,24 @@ def main() -> int:
             "passed": len(passing),
         }
         _log(f"Posting {len(passing)} to weekly channel {cfg.weekly_channel}…")
-        posted, failed = post_papers(cfg.slack_bot_token, cfg.weekly_channel,
-                                     passing, summary=summary, title=WEEKLY_TITLE)
-        _log(f"Posted {posted} messages ({failed} failed).")
+        posted, post_failures = post_papers(cfg.slack_bot_token, cfg.weekly_channel,
+                                            passing, summary=summary, title=WEEKLY_TITLE)
+        _log(f"Posted {posted} messages ({len(post_failures)} failed).")
     elif args.dry_run:
         _log("Dry run — no Slack post, DB not updated.")
+
+    # Only record papers we are done with; the rest are retried next run.
+    if not args.dry_run:
+        persist, retry = split_persist_vs_retry(
+            results, held_back=held_back, post_failures=post_failures)
+        for p, v in persist:
+            db.mark_seen(p, v)
+        _log(f"Persisted {len(persist)} verdicts to seen.db")
+        if retry:
+            error_count = sum(1 for _, v in results if v.is_error)
+            _log(f"↻ {len(retry)} papers left unseen for retry next run "
+                 f"(errors={error_count}, held back={len(held_back)}, "
+                 f"post failures={len(post_failures)})")
 
     db.close()
     return 0

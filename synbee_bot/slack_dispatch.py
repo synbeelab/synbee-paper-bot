@@ -137,30 +137,45 @@ def make_slack_client(token: str):
     except ImportError:
         sys.stderr.write("slack_sdk not installed.\n")
         raise
-    return WebClient(token=token)
+    client = WebClient(token=token)
+    # chat.postMessage is rate-limited at roughly 1 msg/sec per channel. Now that
+    # the per-run post cap is gone, a busy day or a backfill can exceed that, and
+    # a 429 would otherwise surface as a failed post — i.e. a dropped paper.
+    try:
+        from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
+        client.retry_handlers.append(RateLimitErrorRetryHandler(max_retry_count=5))
+    except Exception as e:  # older slack_sdk — degrade, don't crash
+        sys.stderr.write(f"(rate-limit retry handler unavailable: {e})\n")
+    return client
 
 
 def post_papers(token: str, channel: str, items: Iterable[tuple[Paper, Verdict]],
-                summary: dict | None = None, title: str = "🐝 SynBEE 논문 알림") -> tuple[int, int]:
+                summary: dict | None = None, title: str = "🐝 SynBEE 논문 알림",
+                ) -> tuple[int, list[tuple[Paper, Verdict]]]:
     """Post per-paper messages, then a final digest summary reflecting the
-    actual success/failure counts. Returns (posted, failed)."""
+    actual success/failure counts.
+
+    Returns (posted_count, failed_items). The caller needs the actual failed
+    items, not just a count, so it can avoid marking them seen — a paper marked
+    seen is never evaluated again, so a failed post would silently lose it.
+    """
     client = make_slack_client(token)
     items_list = list(items)
     posted = 0
-    failed = 0
+    failed_items: list[tuple[Paper, Verdict]] = []
     for paper, verdict in items_list:
         try:
             post_paper(client, channel, paper, verdict)
             posted += 1
         except Exception as e:
-            failed += 1
+            failed_items.append((paper, verdict))
             sys.stderr.write(f"  ! post failed for {paper.id}: {e}\n")
     if summary is not None:
         final = dict(summary)
         final["posted"] = posted
-        final["failed"] = failed
+        final["failed"] = len(failed_items)
         try:
             post_summary(client, channel, final, title=title)
         except Exception as e:
             sys.stderr.write(f"summary post failed: {e}\n")
-    return posted, failed
+    return posted, failed_items
