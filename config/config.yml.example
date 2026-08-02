@@ -44,7 +44,11 @@ slack:
     high_priority: ""                # e.g., 점수 9+ 별도 채널 (#papers-priority)
     test: ""                         # 운영 전 테스트 채널
   use_test_channel: true             # 첫 1주는 true 권장
-  max_posts_per_run: 15              # 폭주 방지
+  # 게시 편수 상한. null = 무제한 (기본).
+  # 상한을 두면 필터를 통과한 논문이 조용히 버려지고, 직후 seen.db에 기록되어
+  # 다시는 평가되지 않는다 → 영구 누락. 알림 누락 방지가 비용보다 우선이므로 무제한.
+  # 폭주(대량 backfill 등)를 막아야 할 때만 숫자를 넣을 것.
+  max_posts_per_run: null
 
 # --- Storage ---
 storage:
@@ -70,7 +74,7 @@ weekly:
   channel: "C0BKDNLRFAT"             # #논문-알림 (hardcoded)
   since_days: 7
   min_score: 6
-  max_posts: 25
+  max_posts: null                    # null = 무제한 (위 max_posts_per_run 주석 참고)
   llm:
     provider: "gemini"               # paid Gemini tier (shared GEMINI_API_KEY) — no free-tier cap
     model: "gemini-2.5-flash"

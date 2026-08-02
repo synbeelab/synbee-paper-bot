@@ -14,6 +14,23 @@ except ImportError:
     _HAS_DOTENV = False
 
 
+def _optional_cap(value: object) -> int | None:
+    """Parse a post-count cap. null / absent / 0 / negative all mean "no cap".
+
+    Truncating the post list silently drops papers that already passed the
+    filter, and they get marked seen right after, so they are never revisited.
+    Uncapped is therefore the default; the knob only exists as an escape hatch
+    if a runaway backfill ever needs one.
+    """
+    if value is None:
+        return None
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 
@@ -45,14 +62,14 @@ class Config:
     slack_channel_priority: str
     slack_channel_test: str
     slack_use_test: bool
-    slack_max_posts: int
+    slack_max_posts: int | None
 
     # Weekly journal-sweep digest (delta vs daily)
     weekly_enabled: bool
     weekly_channel: str
     weekly_since_days: int
     weekly_min_score: int
-    weekly_max_posts: int
+    weekly_max_posts: int | None
     weekly_llm_provider: str
     weekly_llm_model: str
     weekly_llm_fallback_models: list[str]
@@ -124,12 +141,12 @@ def load_config(config_path: Path | None = None) -> Config:
         slack_channel_priority=str(slack.get("channels", {}).get("high_priority", "")),
         slack_channel_test=str(slack.get("channels", {}).get("test", "")),
         slack_use_test=bool(slack.get("use_test_channel", True)),
-        slack_max_posts=int(slack.get("max_posts_per_run", 15)),
+        slack_max_posts=_optional_cap(slack.get("max_posts_per_run")),
         weekly_enabled=bool(weekly.get("enabled", True)),
         weekly_channel=str(weekly.get("channel", "")),
         weekly_since_days=int(weekly.get("since_days", 7)),
         weekly_min_score=int(weekly.get("min_score", 6)),
-        weekly_max_posts=int(weekly.get("max_posts", 25)),
+        weekly_max_posts=_optional_cap(weekly.get("max_posts")),
         weekly_llm_provider=str(weekly_llm.get("provider", "anthropic")),
         weekly_llm_model=str(weekly_llm.get("model", "claude-haiku-4-5-20251001")),
         weekly_llm_fallback_models=[str(m) for m in (weekly_llm.get("fallback_models") or [])],

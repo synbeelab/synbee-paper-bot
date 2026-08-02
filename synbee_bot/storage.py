@@ -120,3 +120,36 @@ class SeenDB:
 
     def close(self) -> None:
         self.conn.close()
+
+
+def split_persist_vs_retry(
+    results: Iterable[tuple[Paper, Verdict]],
+    *,
+    held_back: Iterable[tuple[Paper, Verdict]] = (),
+    post_failures: Iterable[tuple[Paper, Verdict]] = (),
+) -> tuple[list[tuple[Paper, Verdict]], list[tuple[Paper, Verdict]]]:
+    """Split a run's results into (persist, retry).
+
+    Marking a paper seen is permanent — it is excluded from every future run — so
+    only papers we are genuinely finished with may be recorded. Three cases must
+    be retried instead, because recording them would silently lose the paper:
+
+      * `verdict.is_error` — the LLM never actually judged it (503, parse error,
+        whole fallback chain exhausted). It is stored as NO/score=0, which is not
+        a real decision.
+      * `held_back` — passed the filter but was cut by a post cap.
+      * `post_failures` — passed the filter but never reached Slack.
+
+    Rejected papers (a real NO, or a score below the threshold) DO get persisted:
+    they were judged, and the decision stands.
+    """
+    retry_ids = ({p.id for p, _ in held_back}
+                 | {p.id for p, _ in post_failures})
+    persist: list[tuple[Paper, Verdict]] = []
+    retry: list[tuple[Paper, Verdict]] = []
+    for paper, verdict in results:
+        if verdict.is_error or paper.id in retry_ids:
+            retry.append((paper, verdict))
+        else:
+            persist.append((paper, verdict))
+    return persist, retry

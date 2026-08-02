@@ -37,7 +37,7 @@ from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.slack_dispatch import post_papers  # noqa: E402
 from synbee_bot.sources import collect_all  # noqa: E402
-from synbee_bot.storage import SeenDB  # noqa: E402
+from synbee_bot.storage import SeenDB, split_persist_vs_retry  # noqa: E402
 
 
 def _human_log(msg: str) -> None:
@@ -144,7 +144,18 @@ def main() -> int:
     if error_count:
         _human_log(f"⚠️  {error_count} papers had SDK/parse errors (see stderr above)")
 
-    passing = passing[: cfg.slack_max_posts]
+    # ----- Optional post cap (default: none) -----
+    # A cap silently discards papers that already passed the filter, and they
+    # would be marked seen right after, so they'd never be revisited. Uncapped by
+    # default; if one is set, the excess is held back rather than dropped, so the
+    # next run picks it up.
+    held_back: list[tuple[Paper, Verdict]] = []
+    if cfg.slack_max_posts is not None and len(passing) > cfg.slack_max_posts:
+        held_back = passing[cfg.slack_max_posts:]
+        passing = passing[: cfg.slack_max_posts]
+        _human_log(
+            f"⚠️  post cap {cfg.slack_max_posts} hit — holding back "
+            f"{len(held_back)} passing papers for the next run (not marked seen)")
 
     # ----- Print to stdout (always) -----
     print()
@@ -168,18 +179,18 @@ def main() -> int:
             if v.one_liner:
                 print(f"     reason: {v.one_liner}")
 
-    # ----- Persist verdicts (unless dry-run) -----
-    if not args.dry_run:
-        for p, v in results:
-            db.mark_seen(p, v)
-        _human_log(f"Persisted {len(results)} verdicts to {cfg.seen_db_path}")
-
     # ----- Slack push -----
+    # Posting happens BEFORE persisting, so a paper is only ever marked seen once
+    # it has actually reached Slack. The reverse order silently loses papers when
+    # a post fails. Worst case here is a duplicate if the run dies in between,
+    # which is far preferable to a miss.
     posted = 0
+    post_failures: list[tuple[Paper, Verdict]] = []
     if not args.no_slack and not args.dry_run and cfg.slack_enabled and cfg.slack_bot_token and passing:
         target = cfg.target_channel(score=max((v.score for _, v in passing), default=0))
         if not target:
             _human_log("⚠️  No Slack channel configured — skipping post.")
+            post_failures = list(passing)
         else:
             summary = {
                 "date": dt.date.today().isoformat(),
@@ -188,11 +199,27 @@ def main() -> int:
                 "passed": len(passing),
             }
             _human_log(f"Posting {len(passing)} to Slack channel {target}…")
-            posted, failed = post_papers(cfg.slack_bot_token, target, passing,
-                                         summary=summary)
-            _human_log(f"Posted {posted} messages ({failed} failed).")
+            posted, post_failures = post_papers(cfg.slack_bot_token, target, passing,
+                                                summary=summary)
+            _human_log(f"Posted {posted} messages ({len(post_failures)} failed).")
     elif args.dry_run:
         _human_log("Dry run — Slack push skipped, DB not updated.")
+
+    # ----- Persist verdicts (unless dry-run) -----
+    # Marking a paper seen is permanent: it is excluded from every future run. So
+    # only record papers we are actually done with. Anything left out is retried
+    # on the next run.
+    if not args.dry_run:
+        persist, retry = split_persist_vs_retry(
+            results, held_back=held_back, post_failures=post_failures)
+        for p, v in persist:
+            db.mark_seen(p, v)
+        _human_log(f"Persisted {len(persist)} verdicts to {cfg.seen_db_path}")
+        if retry:
+            _human_log(
+                f"↻ {len(retry)} papers left unseen for retry next run "
+                f"(errors={error_count}, held back={len(held_back)}, "
+                f"post failures={len(post_failures)})")
 
     db.close()
     return 0
