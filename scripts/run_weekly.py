@@ -30,7 +30,9 @@ sys.path.insert(0, str(ROOT))
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
-from synbee_bot.slack_dispatch import post_papers  # noqa: E402
+from synbee_bot.slack_dispatch import (  # noqa: E402
+    make_slack_client, post_papers, post_summary,
+)
 from synbee_bot.sources import fetch_from_pubmed_weekly  # noqa: E402
 from synbee_bot.storage import SeenDB, split_persist_vs_retry  # noqa: E402
 
@@ -39,6 +41,32 @@ WEEKLY_TITLE = "🐝 SynBEE 주간 논문 다이제스트 (delta)"
 
 def _log(msg: str) -> None:
     print(f"[{dt.datetime.now():%H:%M:%S}] {msg}", flush=True)
+
+
+def _post_zero_summary(cfg, args: argparse.Namespace, *,
+                       collected: int, new: int, passed: int) -> None:
+    """Post a summary-only card when there is nothing to push.
+
+    Silence is not an acceptable output: the user cannot tell "no new papers
+    this week" apart from "the workflow is broken". The 2026-07-27 scheduled
+    run hit exactly this and looked identical to a dead bot.
+    """
+    if args.dry_run or args.no_slack:
+        return
+    if not (cfg.slack_enabled and cfg.slack_bot_token and cfg.weekly_channel):
+        return
+    stats = {
+        "date": dt.date.today().isoformat(),
+        "collected": collected,
+        "new": new,
+        "passed": passed,
+        "posted": 0,
+    }
+    try:
+        post_summary(make_slack_client(cfg.slack_bot_token),
+                     cfg.weekly_channel, stats, title=WEEKLY_TITLE)
+    except Exception as e:  # a failed report must never kill the run
+        sys.stderr.write(f"  ! zero-summary post failed: {e}\n")
 
 
 def main() -> int:
@@ -76,7 +104,8 @@ def main() -> int:
     _log(f"Total {len(flat)} → {len(new_papers)} new after dedup vs daily seen.db")
 
     if not new_papers:
-        _log("No delta papers (all already seen by daily). Exiting.")
+        _log("No delta papers (all already seen by daily). Reporting zero and exiting.")
+        _post_zero_summary(cfg, args, collected=len(flat), new=0, passed=0)
         db.close()
         return 0
 
@@ -101,6 +130,13 @@ def main() -> int:
     results.sort(key=lambda pv: -pv[1].score)
     passing = [(p, v) for p, v in results if v.is_yes and v.score >= min_score]
     _log(f"Filter: {len(passing)} pass / {len(results)} total (min_score={min_score})")
+
+    # Report zero explicitly, but do NOT return here: the split_persist_vs_retry
+    # bookkeeping below still has to run so judged-NO papers get marked seen
+    # (otherwise every run re-sends the same rejects to the LLM).
+    if not passing:
+        _log("Nothing passed the filter — posting a zero report so silence is never the output.")
+        _post_zero_summary(cfg, args, collected=len(flat), new=len(new_papers), passed=0)
 
     # Optional post cap (default: none). Excess is held back for the next run
     # rather than dropped, since a dropped paper would be marked seen and lost.

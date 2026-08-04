@@ -2,10 +2,15 @@ name: SynBEE weekly journal digest
 
 on:
   schedule:
-    # 매주 토 KST 08:30 = 금 UTC 23:30. (토요일 daily 08:00 실행 30분 뒤 → daily가 먼저 seen.db 갱신)
-    # 08:00 정각으로 앞당기면 daily와 동시 실행되어 seen.db 캐시 복원 경합이 생기고
-    # 그 주 토요일 논문이 daily/weekly에 중복 게시된다. 30분 오프셋을 유지할 것.
-    - cron: "30 23 * * 5"     # Fri 23:30 UTC = Sat 08:30 KST
+    # 매주 토 KST 09:30 = 토 UTC 00:30. daily(명목 08:00 = 23:00 UTC)보다 뒤에 돌아야
+    # 한다: seen.db를 Actions 캐시로 주고받으므로, weekly가 daily의 cache/save 전에
+    # cache/restore 하면 그 주 토요일 논문이 weekly에 "미확인"으로 보여 중복 게시되고,
+    # weekly가 나중에 save하면 daily 추가분이 빠진 db가 최신 캐시가 되어 다음날 또 올라간다.
+    # 30분 오프셋(08:30)으로는 부족했다 — GitHub 스케줄러 지연이 실측 45~57분,
+    # 2026-07-27 weekly는 94분이었다. 정시(:00) cron이 가장 혼잡하므로 :30을 유지할 것.
+    # 그래도 중복이 관측되면 on: workflow_run: 으로 daily 완료에 체이닝하고
+    # job에서 date -u +%u 로 토요일만 통과시키는 방식으로 올릴 것.
+    - cron: "30 0 * * 6"      # Sat 00:30 UTC = Sat 09:30 KST
   workflow_dispatch:
     inputs:
       since_days:

@@ -71,7 +71,10 @@ schedule:
 # everything the daily bot already saw) → LLM filter → post the delta.
 weekly:
   enabled: true
-  channel: "C0BKDNLRFAT"             # #논문-알림 (hardcoded)
+  channel: "C0B2QJ179K6"             # #papers-daily — 2026-08-04 알림 채널 단일화
+                                     # (was C0BKDNLRFAT #논문-알림). 채널이 둘이면
+                                     # "어느 쪽을 안 봤는지"를 사람이 기억해야 하고
+                                     # 그게 곧 누락이라 일별·주간·ToC를 한 곳에 모음.
   since_days: 7
   min_score: 6
   max_posts: null                    # null = 무제한 (위 max_posts_per_run 주석 참고)

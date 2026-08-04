@@ -1,0 +1,57 @@
+name: SynBEE ToC digest ping
+
+# The weekly journal-ToC summary is generated + posted by a claude.ai cloud
+# routine (trigger trig_01Mok3EWKMHWhstJonwKv7Sa) at Sat 09:00 KST, using the
+# USER's Slack token. Slack never sends a push for your own message, so that
+# digest is invisible on a phone. This bot ping — a different identity — is what
+# actually reaches the phone. Same trick as schedule-ping.yml.
+#
+# The bot must be a member of #papers-daily (/invite @SynBEE Paper Bot).
+
+on:
+  schedule:
+    # 토 09:30 KST = 토 00:30 UTC. ToC 루틴이 09:00에 시작하므로 30분 뒤에 핑.
+    # weekly.yml(주간 delta)과 같은 시각 — 토요일 알림 창구를 한 번으로 모으기 위함.
+    - cron: "30 0 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: synbee-toc-ping
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Push ping to #papers-daily
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          PAPERS_CHANNEL: "C0B2QJ179K6"
+        run: |
+          python3 - <<'PY'
+          import os, json, urllib.request
+          tok = os.environ["SLACK_BOT_TOKEN"]
+          if not tok:
+              raise SystemExit("SLACK_BOT_TOKEN missing")
+          payload = {
+              "channel": os.environ["PAPERS_CHANNEL"],
+              "text": (":file_folder: 이번 주 저널 ToC 요약이 올라왔어요 — "
+                       "위 ⭐ TOP 3부터 확인하세요. (⚠️ 표시가 보이면 루틴 오류)"),
+              "unfurl_links": False,
+              "unfurl_media": False,
+          }
+          req = urllib.request.Request(
+              "https://slack.com/api/chat.postMessage",
+              data=json.dumps(payload).encode("utf-8"),
+              headers={"Authorization": f"Bearer {tok}",
+                       "Content-Type": "application/json; charset=utf-8"},
+          )
+          r = json.loads(urllib.request.urlopen(req, timeout=30).read())
+          print(r)
+          if not r.get("ok"):
+              raise SystemExit(f"Slack error: {r.get('error')}")
+          PY
