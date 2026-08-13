@@ -25,6 +25,8 @@ synbee-paper-bot/
 │   ├── journals.yml              # 관심 학술지 (티어별, NLM 약어)
 │   ├── keywords.yml              # 미션별 키워드 그룹
 │   ├── filter_prompt.md          # Stage 2 LLM 프롬프트
+│   ├── spam_rescue.yml           # 스팸함 구제 설정 (라벨·임계값·안전장치)
+│   ├── spam_rescue_prompt.md     # 스팸/정상 판정 프롬프트
 │   └── config.yml.example        # 메인 설정 템플릿 (복사 후 사용)
 ├── synbee_bot/                   # 패키지
 │   ├── config.py                 # .env + config.yml 로더
@@ -32,15 +34,22 @@ synbee-paper-bot/
 │   ├── sources.py                # PubMed (E-utilities) + bioRxiv API + RSS
 │   ├── filter.py                 # Gemini / Anthropic 필터 (Stage 2)
 │   ├── slack_dispatch.py         # Block Kit 메시지 빌더
-│   └── storage.py                # SQLite seen.db + wiki_queue
+│   ├── storage.py                # SQLite seen.db + wiki_queue
+│   └── spam_rescue/              # Gmail 스팸함 구제 (독립 서브패키지)
+│       ├── gmail.py              #   Gmail REST 클라이언트 (refresh token)
+│       ├── classify.py           #   Gemini 스팸/정상 판정
+│       └── rescue.py             #   판정 → 라벨 조작 + 안전장치
 ├── scripts/
 │   ├── build_query.py            # YAML → PubMed/bioRxiv 쿼리 생성
 │   ├── sanity_check.py           # 실시간 PubMed hit 수 검증
 │   ├── run_daily.py              # 메인 orchestrator (cron 진입점)
+│   ├── run_spam_rescue.py        # 스팸함 구제 진입점
+│   ├── gmail_auth_setup.py       # Gmail refresh token 1회 발급 헬퍼
 │   ├── slack_setup_helper.py     # 토큰 검증 + 채널 목록
 │   └── slack_app_manifest.yaml   # Slack App 자동 생성용 manifest
 ├── .github/workflows/
 │   ├── daily.yml                 # 매일 KST 08:00 cron
+│   ├── spam-rescue.yml           # 매일 KST 07:00 cron — 스팸함 구제
 │   └── sanity-check.yml          # 수동 트리거 hit 수 검증
 ├── data/                         # SQLite 등 (gitignored)
 ├── .env.example
@@ -111,6 +120,23 @@ py scripts\run_daily.py --since-days 1
 | Gemini Flash-Lite | ~$0.00005 | **~$0.15/월** |
 | Gemini 2.5 Flash | ~$0.0002 | ~$0.6/월 |
 | Claude Haiku 4.5 | ~$0.0006 | ~$1.8/월 |
+
+## Gmail 스팸함 구제 봇
+
+논문 알림과는 별개로, 이 repo에는 매일 **KST 07:00**에 Gmail 스팸함을 스크리닝해
+오분류된 정상 메일(타대학 인턴 지원, 세미나 초청, 학회·저널·연구재단 공지 등)만
+**스팸 해제 + `안전함` 라벨 + 받은편지함 이동**시키는 워크플로우가 함께 있다.
+읽음 상태는 건드리지 않고, 아무것도 삭제하지 않는다.
+
+```powershell
+py scripts\run_spam_rescue.py --dry-run    # 판정만 출력, 라벨 변경 없음
+py scripts\run_spam_rescue.py              # 적용
+```
+
+셋업(Google OAuth 클라이언트 + refresh token 발급)과 안전장치 설명은
+[SETUP.md §9-B](SETUP.md) 참고. 별도 repo로 분리하지 않은 이유는
+`GEMINI_API_KEY`를 공유하고, 매일 도는 `daily.yml` 덕분에 repo가 계속 활성
+상태라 GitHub의 **60일 무활동 자동 비활성화**에 걸리지 않기 때문이다.
 
 ## 다음 단계
 

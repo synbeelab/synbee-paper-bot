@@ -1,0 +1,45 @@
+# Gmail spam-folder rescue — settings
+#
+# No secrets here (safe to commit). Credentials come from the environment:
+#   GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET / GMAIL_REFRESH_TOKEN / GEMINI_API_KEY
+# Run: python scripts/run_spam_rescue.py [--dry-run]
+
+labels:
+  # Applied to rescued mail so it is obvious in the inbox why it is there.
+  safe: "안전함"
+  safe_background: "#b9e4d0"
+  safe_text: "#0b804b"
+  # Bookkeeping label on every message we have already judged. Kept ASCII
+  # because it goes into a Gmail search query (`-label:...`). Messages that
+  # stay in spam keep this label until Gmail auto-purges them at 30 days;
+  # it is what stops us re-classifying — and re-paying for — the same mail
+  # every morning.
+  checked: "SpamRescueChecked"
+
+llm:
+  model: "gemini-2.5-flash"
+  fallback_models:
+    - "gemini-2.5-flash-lite"
+  prompt_path: "config/spam_rescue_prompt.md"
+  # Rescue only at this confidence or above. Lower = rescues more, including
+  # borderline mail; higher = leaves more in spam. 6 leans toward rescuing,
+  # which is the point of the job — but the spoof guard in rescue.py still
+  # vetoes anything failing SPF+DKIM+DMARC together, whatever the model says.
+  min_confidence: 6
+  body_chars: 3000
+  parallel_requests: 4
+  timeout_seconds: 30
+
+limits:
+  # Ceiling on messages judged in one run. The spam folder self-purges at 30
+  # days, so steady state is a handful a day; the cap only matters on the
+  # first run against a full folder.
+  max_messages_per_run: 300
+  # Circuit breaker. If a run wants to rescue more than this, it applies
+  # NOTHING and exits non-zero — a runaway prompt must not empty the spam
+  # folder into the inbox.
+  max_rescues_per_run: 40
+  # Fail the run when this fraction of messages could not be classified.
+  # Those messages are left unmarked and retried, but a systemic failure
+  # (bad key, exhausted quota) should surface as a red run, not a quiet one.
+  max_error_ratio: 0.5
