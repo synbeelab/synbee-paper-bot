@@ -342,6 +342,65 @@ repo → **Actions → SynBEE daily paper digest → Run workflow**
 
 성공하면 다음날 KST 08:00부터 자동 실행.
 
+### 6.4 test → daily 채널 전환 절차
+
+첫 1~2주 `#papers-test` 에서 푸시 품질을 검증한 후 정식 운영 채널
+(`#papers-daily`) 로 전환하는 단계입니다.
+
+**메커니즘**: GitHub Actions 가 매 실행마다 `config.yml.example` + GitHub
+Secrets 로부터 실제 `config.yml` 을 재생성합니다. 따라서 진짜 운영 스위치는
+**`USE_TEST_CHANNEL` GitHub Secret** 입니다 (로컬 `config.yml` 의 같은 키는
+informational).
+
+**0. 사전 확인 (Slack에서)**:
+```
+/invite @SynBEE Paper Bot
+```
+`#papers-daily` 에 봇이 멤버인지 확인. 안 들어가 있으면 위 명령으로 초대 —
+이거 안 하면 `chat.postMessage` 가 `not_in_channel` 에러로 실패.
+
+**1. GitHub Secret 변경**:
+1. https://github.com/<owner>/synbee-paper-bot/settings/secrets/actions
+2. **`USE_TEST_CHANNEL`** → Update → 값을 `false` 로 변경 → Save
+3. **`SLACK_DAILY_CHANNEL`** 값이 `#papers-daily` 의 채널 ID 와 일치하는지 확인
+
+**2. Dry-run 안전 검증**:
+1. https://github.com/<owner>/synbee-paper-bot/actions/workflows/daily.yml
+2. 우측 **Run workflow** → `Dry run (no Slack push)` ✅ 체크 → Run
+3. 로그의 `Rendered config/config.yml` 스텝에서 `use_test_channel: false` 확인
+4. `Run daily digest` 스텝 에러 없음 확인
+
+**3. 정식 발송 트리거**:
+1. 같은 Actions 페이지 → **Run workflow** (dry_run 체크 해제)
+2. 1~5분 후 `#papers-daily` 에 digest 카드 도착 확인
+
+이후 매일 KST 08:00 자동 cron 이 `#papers-daily` 로 발송.
+
+**4. 로컬 config.yml 동기화 (선택)**:
+GitHub Actions 은 자체 secret 으로 재생성하므로 로컬 `config.yml` 은 운영에
+영향 없지만, 로컬 수동 테스트 (`python scripts/run_daily.py`) 시 일관성을
+위해 같이 변경:
+```yaml
+slack:
+  use_test_channel: false
+```
+
+**5. `#papers-test` 채널 정리 (선택)**:
+
+| 옵션 | 작업 | 추천 |
+|---|---|---|
+| **유지 (dormant)** | 그대로 둠. 추후 새 prompt·필터 테스트 시 `USE_TEST_CHANNEL=true` 만 잠시 토글하면 즉시 재활용 | ★ 권장 |
+| **봇 제거** | 채널에서 `/remove @SynBEE Paper Bot` | 중 |
+| **완전 archive** | 채널 우측 ⚙️ → Settings → Archive channel | 비추 |
+
+### 6.5 daily channel 임시 비활성 (운영 일시 중단)
+
+신규 prompt·필터 변경 등으로 일시적으로 daily 발송을 멈추려면:
+- 옵션 A: `USE_TEST_CHANNEL` 을 다시 `true` 로 → test 채널로만 발송
+- 옵션 B: Actions 페이지 → 우상단 **⋯** → **Disable workflow** → cron 자체 중단
+
+복귀: 반대 작업.
+
 ---
 
 ## 7. 운영 첫 2주 체크리스트
@@ -478,6 +537,92 @@ frontmatter + 본문으로 포함됨.
 - 주 1회 처리: 금요일 오후에 `python scripts\process_wiki_queue.py --close`
 - 라벨 변경 시 wiki-queue 외에 mission별 라벨(`mission-1`, `mission-2`, `mission-3`)도
   GitHub Issue UI에서 수동으로 추가 가능
+
+---
+
+## 9-B. Gmail 스팸함 구제 봇 (`spam-rescue.yml`)
+
+매일 **KST 07:00**에 Gmail 스팸함을 훑어, 스팸이 아닌 메일(타대학 인턴 지원,
+세미나 초청, 학회·저널·연구재단 공지 등)만 골라 **스팸 해제 + `안전함` 라벨 +
+받은편지함 이동**을 수행한다. 읽음 상태는 건드리지 않으므로 복구된 메일은
+안 읽음으로 남는다. **아무것도 삭제하지 않는다.**
+
+> 왜 별도 OAuth가 필요한가: claude.ai Gmail 커넥터는 스팸함을 차단한다
+> (`in:spam`·`label:SPAM` 검색이 빈 결과, `unmark_message_spam`은 permission
+> denied). 스팸함에 접근할 수 있는 경로는 Gmail REST API 직접 호출뿐이다.
+
+### 9-B.1 Google OAuth 클라이언트 발급 (1회)
+
+1. <https://console.cloud.google.com/> → 프로젝트 생성 (예: `synbee-gmail-bot`)
+2. **APIs & Services → Library** → "Gmail API" → **Enable**
+3. **APIs & Services → OAuth consent screen**
+   - User Type: **External**, 앱 이름 아무거나, 지원 이메일 `dosoyang@korea.ac.kr`
+   - **Test users**에 `dosoyang@korea.ac.kr` 추가 (앱을 게시할 필요 없음)
+   - Scope는 여기서 추가하지 않아도 된다 (요청 시 동적으로 붙는다)
+4. **Credentials → Create Credentials → OAuth client ID**
+   - Application type: **Desktop app**
+   - 생성된 **Client ID / Client secret** 복사
+
+> Test user 상태의 앱은 refresh token이 **7일 후 만료**된다. 계속 쓰려면
+> OAuth consent screen에서 **Publish app**을 눌러 Production으로 전환할 것
+> (심사 없이 즉시 전환된다 — 본인 계정만 쓰는 앱이라 "unverified" 경고만 뜬다).
+
+### 9-B.2 Refresh token 발급 (1회, 브라우저 있는 PC에서)
+
+```powershell
+cd D:\AI_Projects\synbee-paper-bot
+.\.venv\Scripts\Activate.ps1
+python scripts\gmail_auth_setup.py --client-id "<CLIENT_ID>" --client-secret "<SECRET>"
+```
+
+브라우저가 열리면 `dosoyang@korea.ac.kr`로 로그인 → "Google에서 확인하지 않은
+앱" 경고에서 **고급 → 안전하지 않은 페이지로 이동** → 권한 허용.
+터미널에 등록할 secret 3개가 출력된다. **토큰은 파일로 저장되지 않는다.**
+
+### 9-B.3 GitHub Secrets 등록
+
+Settings → Secrets and variables → Actions → New repository secret
+
+| Secret | 값 |
+|---|---|
+| `GMAIL_CLIENT_ID` | 9-B.1에서 복사 |
+| `GMAIL_CLIENT_SECRET` | 9-B.1에서 복사 |
+| `GMAIL_REFRESH_TOKEN` | 9-B.2 출력값 |
+| `GEMINI_API_KEY` | (이미 등록되어 있음 — 공유) |
+
+### 9-B.4 첫 실행은 반드시 dry-run
+
+Actions → **Gmail spam rescue** → Run workflow → `dry_run` 체크 → Run.
+
+로그에 스팸함 전체에 대한 판정이 한 줄씩 찍힌다:
+
+```
+RESCUE student@snu.ac.kr    Inquiry about internship  | student_inquiry: 인턴 지원 문의
+KEEP   contact@ccsend.com   Distinguished Speaker...  | predatory: 약탈적 학회 초청
+```
+
+`RESCUE` 줄을 훑어보고 오판이 없으면 `dry_run` 없이 다시 실행. 이후로는 매일
+07:00에 자동으로 돈다.
+
+### 9-B.5 안전장치
+
+| 장치 | 동작 |
+|---|---|
+| **Circuit breaker** | 한 번에 `max_rescues_per_run`(기본 40)건을 넘게 구제하려 하면 **아무것도 적용하지 않고** 실패 종료. 프롬프트 오작동이 스팸함을 통째로 받은편지함에 쏟아붓는 사고를 막는다. |
+| **Spoof guard** | SPF·DKIM·DMARC가 **모두** 실패한 메일은 모델이 뭐라 하든 구제하지 않는다. 하나만 실패하는 건 정상 메일에도 흔하므로(메일링 리스트 전달 등) 셋 다 실패할 때만 막는다. |
+| **오류 = 재시도** | 분류에 실패한 메일은 `SpamRescueChecked` 라벨을 붙이지 않는다 → 다음 날 다시 판정된다. 일시적 API 오류로 메일이 조용히 유실되지 않는다. |
+| **삭제 불가** | 스코프가 `gmail.modify`뿐이라 영구 삭제 권한 자체가 없다. |
+
+### 9-B.6 운영
+
+- **결과 리포트 채널은 없다.** 무엇을 왜 옮겼는지는 각 run의 artifact
+  (`spam-rescue-log-*`, 30일 보관)에서 확인한다. 실패한 run은 GitHub이 메일로 알린다.
+- 오판을 발견하면 `config/spam_rescue_prompt.md`의 RESCUE/SPAM 규칙에 그 사례를
+  한 줄 추가하는 것이 가장 효과적이다.
+- 너무 적게 구제하면 `config/spam_rescue.yml`의 `min_confidence`를 5로 낮추고,
+  너무 많이 구제하면 7~8로 올린다.
+- `SpamRescueChecked` 라벨은 "이미 판정함" 표시일 뿐이다. 이 라벨이 붙은 채
+  스팸함에 남은 메일은 Gmail이 30일 후 자동 삭제한다.
 
 ---
 
