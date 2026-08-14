@@ -53,6 +53,13 @@ This is the most important category and the reason this job exists.
 - Colleagues, collaborators, co-authors, patent attorneys, students, lab
   members writing about actual shared work.
 
+This category is about someone seeking a **position** with him or discussing
+**work they already share**. It is not "anyone who would like a reply." A
+stranger pitching a product, database, tool, platform, or service is marketing
+no matter how personally the mail is addressed, how relevant the topic is, or
+how free the offer — first-name greetings and "I'd love your thoughts" are
+standard sales technique.
+
 **2. Korea University internal mail** — anything from `korea.ac.kr`
 (administration, 화공생명공학과 행정실, committees, 산학협력단, library, IT),
 **provided authentication does not fail**.
@@ -171,6 +178,7 @@ These are real messages from this mailbox and their correct verdicts:
 | `Synbio Technologies` — "From sgRNA Design to Screening" | **SPAM** — marketing |
 | `SynBEE Lab <…@gmail.com>` — "[SynBEE Lab] Some plugins were automatically updated" | **SPAM** — routine automation |
 | `Claire Rochat <…@rdinnomat…>` — "Dongsoo, Collaboration opportunity with a top 20 pharma" | **SPAM** — sales prospecting |
+| `AllNutrition` — "35,000+ nutrition papers, trust-scored and searchable", free tool, invites a reply | **SPAM** — a stranger pitching a product is marketing, not a personal inquiry |
 | `NSTC <info@mail.nstc.in>` — "AI-Guided Protein Design Workshop – Registration Deadline" | **SPAM** — commercial webinar |
 | `"korea.ac.kr" <rachelryu@microsocket.co.kr>` — 사서함 비활성화 인증 요구 | **SPAM** — phishing, spoofed |
 
