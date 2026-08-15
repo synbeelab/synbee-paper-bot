@@ -35,13 +35,46 @@ sys.path.insert(0, str(ROOT))
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
-from synbee_bot.slack_dispatch import post_papers  # noqa: E402
+from synbee_bot.slack_dispatch import post_papers, post_source_alert  # noqa: E402
 from synbee_bot.sources import collect_all  # noqa: E402
-from synbee_bot.storage import SeenDB, split_persist_vs_retry  # noqa: E402
+from synbee_bot.storage import (  # noqa: E402
+    SeenDB, effective_since_days, split_persist_vs_retry,
+)
 
 
 def _human_log(msg: str) -> None:
     print(f"[{dt.datetime.now():%H:%M:%S}] {msg}", flush=True)
+
+
+def _advance_watermarks(db: SeenDB, succeeded: set[str], *, dry_run: bool) -> None:
+    """Record that these sources made it all the way through.
+
+    Only reached once the run has posted and persisted. Advancing earlier would
+    let a crash between collection and delivery move the window past papers that
+    were never actually delivered.
+    """
+    if dry_run:
+        return
+    for source in sorted(succeeded):
+        db.mark_source_success(source)
+
+
+def _window(db: SeenDB, source: str, configured: int, cfg, override: int | None) -> int:
+    """Days to reach back for one source.
+
+    An explicit --since-days is a deliberate backfill and wins outright.
+    Otherwise the window stretches to cover every day since this source last
+    delivered, so a crashed run does not leave a permanent hole.
+    """
+    if override:
+        return override
+    last = db.get_source_watermark(source)
+    days = effective_since_days(configured, last, max_days=cfg.max_since_days)
+    if days > configured:
+        _human_log(
+            f"  ↺ {source}: widening window to {days}d "
+            f"(last delivered {last.isoformat() if last else 'never'})")
+    return days
 
 
 def main() -> int:
@@ -61,9 +94,9 @@ def main() -> int:
     cfg = load_config()
     db = SeenDB(cfg.seen_db_path)
 
-    pubmed_days = args.since_days or cfg.pubmed_since_days
-    biorxiv_days = args.since_days or cfg.biorxiv_since_days
-    rss_days = args.since_days or cfg.rss_since_days
+    pubmed_days = _window(db, "pubmed", cfg.pubmed_since_days, cfg, args.since_days)
+    biorxiv_days = _window(db, "biorxiv", cfg.biorxiv_since_days, cfg, args.since_days)
+    rss_days = _window(db, "rss", cfg.rss_since_days, cfg, args.since_days)
     min_score = args.min_score if args.min_score is not None else cfg.llm_min_score
 
     # ----- Stage 1: collect -----
@@ -77,11 +110,29 @@ def main() -> int:
         rss=cfg.rss_enabled and not args.no_rss,
     )
     flat: list[Paper] = []
-    for source, papers in collected.items():
+    for source, papers in collected.papers.items():
         if args.limit:
             papers = papers[: args.limit]
         _human_log(f"  {source}: {len(papers)} papers")
         flat.extend(papers)
+
+    # A source that failed is not a source that was empty. Keep going on the
+    # ones that worked — the alternative used to be losing the whole run — but
+    # say so loudly, and leave the failed source's watermark alone so the next
+    # run refetches its window.
+    for source, reason in collected.failures.items():
+        _human_log(f"  ⚠️  {source} FAILED — {reason}")
+    if collected.failures and not args.dry_run and cfg.slack_enabled and cfg.slack_bot_token:
+        # Sent here rather than folded into the digest summary: on a day when
+        # nothing passes the filter there is no digest to carry the warning.
+        alert_channel = cfg.target_channel(score=0)
+        if alert_channel:
+            post_source_alert(cfg.slack_bot_token, alert_channel,
+                              collected.failures, dt.date.today().isoformat())
+    if collected.failures and not collected.succeeded:
+        _human_log("❌ Every source failed. Nothing to do; window stays open for the next run.")
+        db.close()
+        return 1
 
     # Dedup within run (same DOI/PMID may appear in multiple sources)
     by_id: dict[str, Paper] = {}
@@ -96,6 +147,8 @@ def main() -> int:
 
     if not new_papers:
         _human_log("Nothing new. Exiting.")
+        _advance_watermarks(db, collected.succeeded, dry_run=args.dry_run)
+        db.close()
         return 0
 
     # ----- Stage 2: LLM filter -----
@@ -220,6 +273,14 @@ def main() -> int:
                 f"↻ {len(retry)} papers left unseen for retry next run "
                 f"(errors={error_count}, held back={len(held_back)}, "
                 f"post failures={len(post_failures)})")
+
+    # Delivered — the sources that worked may now advance. The ones that failed
+    # keep their old watermark, which is what widens the next run's window.
+    _advance_watermarks(db, collected.succeeded, dry_run=args.dry_run)
+    if collected.failures:
+        _human_log(
+            f"↺ {sorted(collected.failures)} not advanced — next run will "
+            f"refetch their window.")
 
     db.close()
     return 0

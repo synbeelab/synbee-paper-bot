@@ -44,6 +44,7 @@ class Config:
     biorxiv_since_days: int
     rss_enabled: bool
     rss_since_days: int
+    max_since_days: int
 
     # LLM filter
     llm_enabled: bool
@@ -127,6 +128,7 @@ def load_config(config_path: Path | None = None) -> Config:
         biorxiv_since_days=int(biorxiv.get("since_days", 1)),
         rss_enabled=bool(rss.get("enabled", True)),
         rss_since_days=int(rss.get("since_days", 1)),
+        max_since_days=int(sources.get("max_since_days", 30)),
         llm_enabled=bool(llm.get("enabled", True)),
         llm_provider=str(llm.get("provider", "gemini")),
         llm_model=str(llm.get("model", "gemini-2.5-flash")),

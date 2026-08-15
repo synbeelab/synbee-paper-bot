@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -26,20 +29,53 @@ EFETCH = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 TOOL = "synbee-paper-bot"
 
 
+class SourceFetchError(RuntimeError):
+    """A source could not be fetched completely.
+
+    Raised instead of returning a short list. An empty or truncated result is
+    indistinguishable from "nothing was published", so a source that degrades
+    quietly drops papers that no later run ever looks for again. The caller
+    treats this as a failed source: the run continues on the other sources, and
+    this source's watermark is not advanced, so the next run refetches the
+    window.
+    """
+
+
 # ---------------------------------------------------------------------------
 # PubMed
 # ---------------------------------------------------------------------------
-def _ncbi_post(url: str, params: dict, timeout: int = 60) -> str:
+def _ncbi_post(url: str, params: dict, timeout: int = 60,
+               attempts: int = 3, backoff: float = 2.0) -> str:
+    """POST to an NCBI E-utility, retrying transient failures.
+
+    E-utilities return 502/503 under load often enough that a single attempt
+    costs a whole day of PubMed. Exhausting the retries raises SourceFetchError
+    so the caller treats PubMed as failed rather than as empty.
+    """
     api_key = os.environ.get("NCBI_API_KEY")
     if api_key:
         params["api_key"] = api_key
     params["tool"] = TOOL
     params["email"] = os.environ.get("NCBI_EMAIL", "dosoyang@korea.ac.kr")
     data = urllib.parse.urlencode(params, doseq=True).encode("utf-8")
-    req = urllib.request.Request(url, data=data, method="POST")
-    req.add_header("Content-Type", "application/x-www-form-urlencoded")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8", errors="replace")
+
+    last_error = "unknown"
+    for attempt in range(1, attempts + 1):
+        req = urllib.request.Request(url, data=data, method="POST")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            last_error = f"HTTP {e.code}"
+            if 400 <= e.code < 500 and e.code != 429:
+                break
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            last_error = str(e) or type(e).__name__
+        if attempt < attempts:
+            sys.stderr.write(f"  retry {attempt}/{attempts - 1} for NCBI: {last_error}\n")
+            time.sleep(backoff * attempt)
+    raise SourceFetchError(f"NCBI {url}: {last_error}")
 
 
 def pubmed_search_pmids(query: str, since_days: int, retmax: int = 500) -> list[str]:
@@ -211,12 +247,44 @@ def fetch_from_pubmed_journals_only(since_days: int, retmax: int = 2000) -> list
 # bioRxiv  — JSON API
 # https://api.biorxiv.org/details/biorxiv/{interval}/{cursor}/{format}
 # ---------------------------------------------------------------------------
-import json
-import urllib.error
+def _fetch_json(url: str, *, timeout: int = 30, attempts: int = 3,
+                backoff: float = 2.0) -> dict:
+    """GET a JSON document, retrying transient failures.
+
+    Guards every way this call has been seen to fail, not just HTTPError:
+    an empty body served with HTTP 200 (the 2026-08-15 bioRxiv outage), an HTML
+    holding page, a timeout, or a DNS/connection error.
+    """
+    last_error = "unknown"
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                raw = r.read().decode("utf-8", errors="replace").strip()
+            if not raw:
+                raise ValueError("empty response body (HTTP 200)")
+            return json.loads(raw)
+        except urllib.error.HTTPError as e:
+            last_error = f"HTTP {e.code}"
+            # 4xx other than rate-limiting will not fix itself on retry.
+            if 400 <= e.code < 500 and e.code != 429:
+                break
+        except json.JSONDecodeError as e:
+            last_error = f"malformed JSON ({e})"
+        except (urllib.error.URLError, TimeoutError, ValueError, OSError) as e:
+            last_error = str(e) or type(e).__name__
+        if attempt < attempts:
+            sys.stderr.write(f"  retry {attempt}/{attempts - 1} for {url}: {last_error}\n")
+            time.sleep(backoff * attempt)
+    raise SourceFetchError(f"{url}: {last_error}")
 
 
 def biorxiv_recent(server: str, since_days: int, max_pages: int = 20) -> list[Paper]:
-    """Fetch all bioRxiv/medRxiv papers in date range, paginated."""
+    """Fetch all bioRxiv/medRxiv papers in date range, paginated.
+
+    Raises SourceFetchError if any page cannot be read. Returning the pages
+    collected so far would silently drop everything on the pages behind the
+    failure.
+    """
     end = dt.date.today()
     start = end - dt.timedelta(days=since_days)
     interval = f"{start.isoformat()}/{end.isoformat()}"
@@ -226,11 +294,10 @@ def biorxiv_recent(server: str, since_days: int, max_pages: int = 20) -> list[Pa
     for _ in range(max_pages):
         url = f"https://api.biorxiv.org/details/{server}/{interval}/{cursor}/json"
         try:
-            with urllib.request.urlopen(url, timeout=30) as r:
-                data = json.loads(r.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            sys.stderr.write(f"  bioRxiv HTTP {e.code} at cursor {cursor}\n")
-            break
+            data = _fetch_json(url)
+        except SourceFetchError as e:
+            raise SourceFetchError(
+                f"{server} unreachable at cursor {cursor}: {e}") from e
         for item in data.get("collection", []):
             paper = _parse_biorxiv_item(item, server)
             if paper:
@@ -289,18 +356,23 @@ def fetch_from_biorxiv(since_days: int) -> list[Paper]:
 def fetch_from_rss(since_days: int) -> list[Paper]:
     try:
         import feedparser
-    except ImportError:
-        sys.stderr.write("feedparser not installed — skipping RSS\n")
-        return []
+    except ImportError as e:
+        # Returning [] here reads downstream as "no papers today" and would
+        # advance the RSS watermark past days nobody ever looked at.
+        raise SourceFetchError("feedparser not installed — RSS not collected") from e
     journals_yaml = _load_yaml(ROOT / "config" / "journals.yml")
     feeds = journals_yaml.get("rss_feeds", []) or []
     cutoff = dt.datetime.now() - dt.timedelta(days=since_days)
     out: list[Paper] = []
+    broken: list[str] = []
     for feed in feeds:
         try:
             parsed = feedparser.parse(feed["url"])
         except Exception as e:
+            # Skipping the feed keeps the other feeds flowing, but the run must
+            # still be told, or this feed's papers vanish one day at a time.
             sys.stderr.write(f"  RSS error {feed['name']}: {e}\n")
+            broken.append(f"{feed.get('name', feed.get('url', '?'))}: {e}")
             continue
         for entry in parsed.entries:
             pub = entry.get("published_parsed") or entry.get("updated_parsed")
@@ -324,19 +396,57 @@ def fetch_from_rss(since_days: int) -> list[Paper]:
                 doi=None, url=link,
                 published=pub_dt.isoformat() if pub_dt else None,
             ))
+    if broken:
+        raise SourceFetchError("; ".join(broken))
     return out
 
 
 # ---------------------------------------------------------------------------
 # Orchestrator helper
 # ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class CollectResult:
+    """What each enabled source returned, and which ones failed.
+
+    `failures` is not decoration: a source missing from `papers` means "we do
+    not know what it had", which is a different thing from "it had nothing",
+    and only the former must block that source's watermark.
+    """
+    papers: dict[str, list[Paper]]
+    failures: dict[str, str]
+    succeeded: set[str]
+
+    @property
+    def all_papers(self) -> list[Paper]:
+        return [p for group in self.papers.values() for p in group]
+
+
 def collect_all(since_days_pubmed: int, since_days_biorxiv: int, since_days_rss: int,
-                pubmed: bool = True, biorxiv: bool = True, rss: bool = True) -> dict[str, list[Paper]]:
-    out: dict[str, list[Paper]] = {}
-    if pubmed:
-        out["pubmed"] = fetch_from_pubmed(since_days_pubmed)
-    if biorxiv:
-        out["biorxiv"] = fetch_from_biorxiv(since_days_biorxiv)
-    if rss:
-        out["rss"] = fetch_from_rss(since_days_rss)
-    return out
+                pubmed: bool = True, biorxiv: bool = True,
+                rss: bool = True) -> CollectResult:
+    """Collect from every enabled source, isolating each one.
+
+    A source that raises is recorded as failed and the rest still run. Before
+    this isolation existed, a bioRxiv outage aborted the whole process and threw
+    away the PubMed papers already fetched in the same call (run 31849376195).
+    """
+    papers: dict[str, list[Paper]] = {}
+    failures: dict[str, str] = {}
+    succeeded: set[str] = set()
+
+    enabled = [
+        ("pubmed", pubmed, lambda: fetch_from_pubmed(since_days_pubmed)),
+        ("biorxiv", biorxiv, lambda: fetch_from_biorxiv(since_days_biorxiv)),
+        ("rss", rss, lambda: fetch_from_rss(since_days_rss)),
+    ]
+    for name, is_enabled, fetch in enabled:
+        if not is_enabled:
+            continue
+        try:
+            papers[name] = fetch()
+            succeeded.add(name)
+        except Exception as e:
+            failures[name] = f"{type(e).__name__}: {e}"
+            sys.stderr.write(f"  ✗ source '{name}' failed: {failures[name]}\n")
+
+    return CollectResult(papers=papers, failures=failures, succeeded=succeeded)

@@ -114,6 +114,44 @@ def build_summary_blocks(stats: dict, title: str = "🐝 SynBEE 논문 알림") 
     ]
 
 
+def build_source_alert_blocks(failures: dict[str, str], date: str) -> list[dict]:
+    """Warning for sources that could not be collected.
+
+    A dead source makes for a digest that looks perfectly normal and is quietly
+    incomplete — and on a day when nothing passes the filter, there is no digest
+    at all to attach the warning to. So this goes out as its own message.
+    """
+    detail = "\n".join(f"• *{name}* — {reason}" for name, reason in sorted(failures.items()))
+    text = (
+        f"🚨 *논문 수집 실패* — {date}\n"
+        f"{detail}\n\n"
+        f"_이 소스의 논문은 오늘 다이제스트에 포함되지 않았습니다. "
+        f"해당 소스의 수집 기준일은 전진하지 않으므로, 다음 런이 빠진 기간을 다시 훑습니다._"
+    )
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": text}},
+        {"type": "divider"},
+    ]
+
+
+def post_source_alert(token: str, channel: str, failures: dict[str, str],
+                      date: str) -> bool:
+    """Announce failed sources. Returns True if the alert reached Slack."""
+    if not failures:
+        return False
+    try:
+        client = make_slack_client(token)
+        client.chat_postMessage(
+            channel=channel,
+            blocks=build_source_alert_blocks(failures, date),
+            text=f"논문 수집 실패: {', '.join(sorted(failures))}",
+        )
+        return True
+    except Exception as e:
+        sys.stderr.write(f"source alert post failed: {e}\n")
+        return False
+
+
 def post_paper(client, channel: str, paper: Paper, verdict: Verdict) -> dict:
     blocks = build_paper_blocks(paper, verdict)
     fallback = f"{paper.title} ({paper.journal})"
