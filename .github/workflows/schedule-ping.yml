@@ -1,13 +1,20 @@
-name: SynBEE schedule briefing ping
+name: SynBEE 일정 채널 ping
 
 # Posts a one-line push notification to #일정 so Prof. Yang gets a phone alert.
-# The full briefing itself is generated + posted (as the user) by a separate
-# claude.ai cloud routine at 07:50 KST; this bot ping (a different identity)
-# is what actually triggers a Slack push. The bot must be a member of #일정.
+# Slack sends no push for your own messages, and the routines below post as the
+# user, so this bot ping (a different identity) is what actually reaches the
+# phone. The bot must be a member of #일정.
+#
+# 2026-08-16: repointed. This used to announce the 07:50 schedule-briefing
+# routine, which is now disabled — the ping would otherwise have advertised a
+# briefing that never arrives. What still lands in #일정 is the 08:30 invitation
+# triage summary (daily) and, on Saturdays, the R&D 과제공고 digest from
+# synbeelab/rnd-search at 08:00. Firing at 08:40 covers both: the invitation
+# routine takes 35–90 s, so it has always finished by then.
 
 on:
   schedule:
-    - cron: "0 23 * * *"     # 08:00 KST daily (10 min after the 07:50 briefing routine)
+    - cron: "40 23 * * *"    # 08:40 KST daily (10 min after the 08:30 invitation routine)
   workflow_dispatch:
 
 permissions:
@@ -30,15 +37,24 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           SCHEDULE_CHANNEL: "C0BKW7H4ABU"
+          TZ: "Asia/Seoul"
         run: |
           python3 - <<'PY'
-          import os, json, urllib.request
+          import os, json, datetime, urllib.request
           tok = os.environ["SLACK_BOT_TOKEN"]
           if not tok:
               raise SystemExit("SLACK_BOT_TOKEN missing")
+          # Saturday also carries the weekly R&D 과제공고 digest, which has
+          # deadlines attached — name it so the push says what is actually there.
+          is_saturday = datetime.datetime.now().weekday() == 5
+          text = (":test_tube: 이번 주 R&D 과제공고 서베이 + 학술지 초청 처리 결과가 "
+                  "#일정에 올라왔어요 — 공고는 마감이 있으니 확인하세요!"
+                  if is_saturday else
+                  ":envelope_with_arrow: 오늘의 학술지 초청 처리 결과가 #일정에 "
+                  "올라왔어요 — 판단 필요 건이 있는지 확인하세요!")
           payload = {
               "channel": os.environ["SCHEDULE_CHANNEL"],
-              "text": ":calendar: 오늘의 일정 브리핑이 #일정에 올라왔어요 — 확인하세요!",
+              "text": text,
               "unfurl_links": False,
               "unfurl_media": False,
           }
