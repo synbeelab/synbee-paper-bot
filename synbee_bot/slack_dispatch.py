@@ -114,20 +114,35 @@ def build_summary_blocks(stats: dict, title: str = "🐝 SynBEE 논문 알림") 
     ]
 
 
+SLACK_SECTION_LIMIT = 3000
+
+
 def build_source_alert_blocks(failures: dict[str, str], date: str) -> list[dict]:
     """Warning for sources that could not be collected.
 
     A dead source makes for a digest that looks perfectly normal and is quietly
     incomplete — and on a day when nothing passes the filter, there is no digest
     at all to attach the warning to. So this goes out as its own message.
+
+    Reasons are budgeted to fit Slack's 3000-character section limit. Fetch
+    errors carry full URLs and several sources can fail at once; an oversized
+    section is rejected outright, which would drop the one message saying the
+    digest is incomplete.
     """
-    detail = "\n".join(f"• *{name}* — {reason}" for name, reason in sorted(failures.items()))
-    text = (
-        f"🚨 *논문 수집 실패* — {date}\n"
-        f"{detail}\n\n"
-        f"_이 소스의 논문은 오늘 다이제스트에 포함되지 않았습니다. "
-        f"해당 소스의 수집 기준일은 전진하지 않으므로, 다음 런이 빠진 기간을 다시 훑습니다._"
-    )
+    header = f"🚨 *논문 수집 실패* — {date}\n"
+    footer = ("\n\n_이 소스의 논문은 오늘 다이제스트에 포함되지 않았습니다. "
+              "해당 소스의 수집 기준일은 전진하지 않으므로, 다음 런이 빠진 기간을 다시 훑습니다._")
+
+    items = sorted(failures.items())
+    budget = SLACK_SECTION_LIMIT - len(header) - len(footer)
+    # Per line: "• *name* — reason\n". Keep a floor so every source stays named.
+    per_reason = max(60, budget // max(1, len(items)) - len("• *) — \n") - 24)
+    detail = "\n".join(f"• *{name}* — {_truncate(reason, per_reason)}"
+                       for name, reason in items)
+
+    text = header + detail + footer
+    if len(text) > SLACK_SECTION_LIMIT:  # pathological source count — clamp hard
+        text = text[: SLACK_SECTION_LIMIT - 1] + "…"
     return [
         {"type": "section", "text": {"type": "mrkdwn", "text": text}},
         {"type": "divider"},

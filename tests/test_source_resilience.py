@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from synbee_bot import sources  # noqa: E402
+from synbee_bot import slack_dispatch as sources_slack  # noqa: E402
 from synbee_bot.slack_dispatch import (  # noqa: E402
     build_source_alert_blocks, post_source_alert,
 )
@@ -287,6 +288,53 @@ def test_source_alert_is_a_standalone_message_not_a_digest_footer():
 
 def test_no_alert_when_every_source_worked():
     assert post_source_alert("token", "C123", {}, "2026-08-15") is False
+
+
+def test_alert_reaches_slack_as_a_well_formed_message(monkeypatch):
+    """Block Kit shape is only validated by Slack at post time, and
+    post_source_alert swallows its own exceptions — so a malformed block would
+    fail silently in production and pass every content-only test."""
+    sent = {}
+
+    class FakeClient:
+        def chat_postMessage(self, **kw):
+            sent.update(kw)
+            return {"ok": True}
+
+    monkeypatch.setattr(sources_slack, "make_slack_client", lambda token: FakeClient())
+
+    ok = post_source_alert("xoxb-test", "C123", {"biorxiv": "empty body"}, "2026-08-15")
+
+    assert ok is True
+    assert sent["channel"] == "C123"
+    assert sent["text"], "a fallback text is required for notifications"
+    for block in sent["blocks"]:
+        assert block["type"] in {"section", "divider"}
+        if block["type"] == "section":
+            assert block["text"]["type"] == "mrkdwn"
+            assert len(block["text"]["text"]) <= 3000, "Slack rejects >3000 chars"
+
+
+def test_alert_survives_a_reason_too_long_for_a_slack_block():
+    """Fetch errors carry full URLs, and several can fail at once. Slack rejects
+    a section over 3000 characters outright — which would drop the one message
+    telling the reader the digest is incomplete."""
+    blocks = build_source_alert_blocks(
+        {f"src{i}": "x" * 4000 for i in range(4)}, "2026-08-15")
+
+    for block in blocks:
+        if block["type"] == "section":
+            assert len(block["text"]["text"]) <= 3000
+
+
+def test_alert_still_names_every_failed_source_after_truncation():
+    """Truncation must not cost the reader a source name."""
+    blocks = build_source_alert_blocks(
+        {"pubmed": "y" * 4000, "biorxiv": "z" * 4000}, "2026-08-15")
+
+    text = blocks[0]["text"]["text"]
+    assert "pubmed" in text
+    assert "biorxiv" in text
 
 
 # --- watermark persistence --------------------------------------------------

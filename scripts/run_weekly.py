@@ -31,12 +31,18 @@ from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.slack_dispatch import (  # noqa: E402
-    make_slack_client, post_papers, post_summary,
+    make_slack_client, post_papers, post_source_alert, post_summary,
 )
 from synbee_bot.sources import fetch_from_pubmed_weekly  # noqa: E402
-from synbee_bot.storage import SeenDB, split_persist_vs_retry  # noqa: E402
+from synbee_bot.storage import (  # noqa: E402
+    SeenDB, effective_since_days, split_persist_vs_retry,
+)
 
 WEEKLY_TITLE = "🐝 SynBEE 주간 논문 다이제스트 (delta)"
+
+# Tracked separately from the daily bot's "pubmed": a different query (journal
+# only, no keyword gate) on a different cadence, so it owns its own window.
+WEEKLY_SOURCE = "weekly_pubmed"
 
 
 def _log(msg: str) -> None:
@@ -69,6 +75,21 @@ def _post_zero_summary(cfg, args: argparse.Namespace, *,
         sys.stderr.write(f"  ! zero-summary post failed: {e}\n")
 
 
+def _alert_sweep_failure(cfg, args: argparse.Namespace, reason: str) -> None:
+    """Tell Slack the sweep died.
+
+    Without this the week is indistinguishable from a quiet one — worse, the
+    zero report the reader is used to seeing never arrives either, so the
+    absence itself carries no information.
+    """
+    if args.dry_run or args.no_slack:
+        return
+    if not (cfg.slack_enabled and cfg.slack_bot_token and cfg.weekly_channel):
+        return
+    post_source_alert(cfg.slack_bot_token, cfg.weekly_channel,
+                      {"weekly PubMed sweep": reason}, dt.date.today().isoformat())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -84,12 +105,34 @@ def main() -> int:
         _log("weekly disabled in config. Exiting.")
         return 0
 
-    since = args.since_days or cfg.weekly_since_days
     min_score = args.min_score if args.min_score is not None else cfg.weekly_min_score
     db = SeenDB(cfg.seen_db_path)
 
+    # A weekly run that dies leaves a 7-day hole, and the next run starts after
+    # it. Reach back to the last delivery instead of assuming the previous run
+    # worked. Journal-only sweep = these papers have no other route in.
+    if args.since_days:
+        since = args.since_days
+    else:
+        last = db.get_source_watermark(WEEKLY_SOURCE)
+        since = effective_since_days(cfg.weekly_since_days, last,
+                                     max_days=cfg.max_since_days)
+        if since > cfg.weekly_since_days:
+            _log(f"  ↺ widening window to {since}d "
+                 f"(last delivered {last.isoformat() if last else 'never'})")
+
     _log(f"Weekly keyword+journal PubMed sweep (since {since}d)…")
-    flat = fetch_from_pubmed_weekly(since_days=since)
+    try:
+        flat = fetch_from_pubmed_weekly(since_days=since)
+    except Exception as e:
+        # One source means nothing to fall back on, so this run delivers
+        # nothing — but it must not look like a quiet week, and the watermark
+        # must stay put so next week's sweep covers these days too.
+        reason = f"{type(e).__name__}: {e}"
+        _log(f"❌ weekly sweep FAILED — {reason}")
+        _alert_sweep_failure(cfg, args, reason)
+        db.close()
+        return 1
     if args.limit:
         flat = flat[: args.limit]
     _log(f"  pubmed(journal-only): {len(flat)} papers")
@@ -106,6 +149,10 @@ def main() -> int:
     if not new_papers:
         _log("No delta papers (all already seen by daily). Reporting zero and exiting.")
         _post_zero_summary(cfg, args, collected=len(flat), new=0, passed=0)
+        # Zero delta is a real answer, not a failure: the sweep ran and found
+        # nothing new. Advance, or a quiet stretch widens the window forever.
+        if not args.dry_run:
+            db.mark_source_success(WEEKLY_SOURCE)
         db.close()
         return 0
 
@@ -186,6 +233,8 @@ def main() -> int:
             _log(f"↻ {len(retry)} papers left unseen for retry next run "
                  f"(errors={error_count}, held back={len(held_back)}, "
                  f"post failures={len(post_failures)})")
+        # Delivered — safe to move the window forward.
+        db.mark_source_success(WEEKLY_SOURCE)
 
     db.close()
     return 0

@@ -141,6 +141,7 @@ def test_nothing_passing_still_persists_the_judged_rejects(tmp_path, monkeypatch
         weekly_min_score = 6      # --no-llm gives score 5 → nothing passes
         weekly_max_posts = None
         llm_enabled = False
+        max_since_days = 30
         seen_db_path = db_path
 
     monkeypatch.setattr(rw, "load_config", lambda: Full())
