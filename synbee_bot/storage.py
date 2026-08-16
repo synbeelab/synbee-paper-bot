@@ -1,12 +1,17 @@
-"""SQLite-backed dedup + wiki queue."""
+"""SQLite-backed dedup + wiki queue + per-source collection watermarks."""
 from __future__ import annotations
 
+import datetime as dt
 import json
 import sqlite3
 from pathlib import Path
 from typing import Iterable
 
 from .models import Paper, Verdict
+
+
+# A watermark that has fallen far behind must not trigger an unbounded backfill.
+MAX_SINCE_DAYS = 30
 
 
 SCHEMA = """
@@ -34,6 +39,15 @@ CREATE TABLE IF NOT EXISTS wiki_queue (
     queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     processed_at TIMESTAMP,
     FOREIGN KEY(paper_id) REFERENCES seen(id)
+);
+
+-- Last date each source was collected AND delivered end-to-end. The next run
+-- widens its window to cover everything since, so a crashed or skipped run
+-- heals itself instead of leaving a permanent hole in the record.
+CREATE TABLE IF NOT EXISTS source_watermark (
+    source TEXT PRIMARY KEY,
+    last_success TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
 
@@ -90,6 +104,36 @@ class SeenDB:
         )
         self.conn.commit()
 
+    # --- per-source collection watermarks ---------------------------------
+    def get_source_watermark(self, source: str) -> dt.date | None:
+        """Last date this source was collected and delivered, or None."""
+        row = self.conn.execute(
+            "SELECT last_success FROM source_watermark WHERE source = ?", (source,)
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            return dt.date.fromisoformat(row["last_success"])
+        except ValueError:
+            # Unparseable watermark: treat as no history, which widens the
+            # window rather than narrowing it.
+            return None
+
+    def mark_source_success(self, source: str, day: dt.date | None = None) -> None:
+        """Advance a source's watermark. Call only once the run has actually
+        delivered — advancing after collection alone would skip past papers a
+        later stage dropped."""
+        day = day or dt.date.today()
+        self.conn.execute(
+            """INSERT INTO source_watermark(source, last_success, updated_at)
+               VALUES(?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(source) DO UPDATE SET
+                 last_success = excluded.last_success,
+                 updated_at = CURRENT_TIMESTAMP""",
+            (source, day.isoformat()),
+        )
+        self.conn.commit()
+
     def queue_for_wiki(self, paper_id: str) -> None:
         self.conn.execute(
             "INSERT OR IGNORE INTO wiki_queue(paper_id) VALUES(?)", (paper_id,)
@@ -120,6 +164,34 @@ class SeenDB:
 
     def close(self) -> None:
         self.conn.close()
+
+
+def effective_since_days(
+    configured: int,
+    last_success: dt.date | None,
+    *,
+    today: dt.date | None = None,
+    max_days: int = MAX_SINCE_DAYS,
+) -> int:
+    """How far back this source must reach on this run.
+
+    The configured `since_days` assumes every previous run succeeded. When one
+    did not — it crashed, the workflow was disabled, the source was down — a
+    fixed 1-day window steps straight over the gap and those papers are never
+    fetched by any run again. So the window is stretched to cover everything
+    since the last confirmed delivery.
+
+    One extra day is always added: papers indexed after yesterday's run but
+    before midnight fall in the seam between two adjacent windows. The overlap
+    costs nothing — seen.db removes the duplicates before the LLM stage.
+    """
+    today = today or dt.date.today()
+    if last_success is None:
+        return configured
+    gap = (today - last_success).days
+    if gap < 0:  # clock skew / hand-edited DB — never shrink the window
+        return configured
+    return min(max(configured, gap + 1), max_days)
 
 
 def split_persist_vs_retry(

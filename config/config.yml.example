@@ -21,6 +21,11 @@ sources:
     enabled: true                    # journals.yml의 rss_feeds 사용
     since_days: 1
 
+  # 런이 실패하면 그 소스의 watermark가 전진하지 않고, 다음 런이 창을 넓혀
+  # 빠진 날짜를 자동으로 회수한다. 이 값은 그 자동 확장의 상한(일).
+  # 오래 멈춰 있던 뒤 폭주 backfill이 도는 것을 막는 안전장치.
+  max_since_days: 30
+
 # --- Stage 2: LLM relevance filter ---
 llm_filter:
   enabled: true
