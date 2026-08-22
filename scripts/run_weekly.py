@@ -1,10 +1,19 @@
 """
 SynBEE Paper Bot — WEEKLY journal-sweep digest ("delta" vs daily).
 
-Queries PubMed by JOURNAL ONLY (no keyword gate) for the last N days, dedups
-against the SAME seen.db the daily bot uses (so daily-caught papers are
-excluded), LLM-filters with Anthropic Haiku, and posts the delta to the weekly
-Slack channel (#논문-알림).
+Two sweeps feed one delta:
+
+  1. PubMed, journal whitelist + broadened keyword net (fetch_from_pubmed_weekly).
+  2. Crossref ToC sweep — EVERY article the configured journals published in the
+     window, no keyword gate (config/toc_journals.yml). This exists because the
+     journals' own ToC e-mails are partial: Nature Communications shows 12 of
+     214-296 per week and PNAS shows front matter only (15-18 of 84-106 per
+     issue), so reading the mail is not reading the journal. The keyword gate in
+     sweep 1 would also drop anything whose title misses the keyword list.
+
+Both dedup against the SAME seen.db the daily bot uses — by id AND by DOI, since
+one paper arrives as `pubmed:12345` from one sweep and `doi:10.1038/...` from the
+other. Then the LLM filter judges the delta and the survivors go to Slack.
 
 Usage:
     python scripts/run_weekly.py
@@ -33,6 +42,8 @@ from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.slack_dispatch import (  # noqa: E402
     make_slack_client, post_papers, post_source_alert, post_summary,
 )
+from synbee_bot.crossref import SOURCE_NAME as TOC_SOURCE  # noqa: E402
+from synbee_bot.crossref import fetch_toc_sweep, load_toc_config  # noqa: E402
 from synbee_bot.sources import fetch_from_pubmed_weekly  # noqa: E402
 from synbee_bot.storage import (  # noqa: E402
     SeenDB, effective_since_days, split_persist_vs_retry,
@@ -43,6 +54,11 @@ WEEKLY_TITLE = "🐝 SynBEE 주간 논문 다이제스트 (delta)"
 # Tracked separately from the daily bot's "pubmed": a different query (journal
 # only, no keyword gate) on a different cadence, so it owns its own window.
 WEEKLY_SOURCE = "weekly_pubmed"
+
+# The ToC sweep keeps its OWN watermark (TOC_SOURCE == 'crossref_toc'). If
+# Crossref is down while PubMed is up, advancing a shared watermark would step
+# over the days the ToC sweep never fetched, and no later run would look for
+# them again.
 
 
 def _log(msg: str) -> None:
@@ -95,6 +111,8 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--no-slack", action="store_true")
     ap.add_argument("--no-llm", action="store_true")
+    ap.add_argument("--no-toc", action="store_true",
+                    help="Skip the Crossref ToC sweep (debug)")
     ap.add_argument("--since-days", type=int)
     ap.add_argument("--limit", type=int, help="Cap papers fetched (debug)")
     ap.add_argument("--min-score", type=int)
@@ -122,28 +140,77 @@ def main() -> int:
                  f"(last delivered {last.isoformat() if last else 'never'})")
 
     _log(f"Weekly keyword+journal PubMed sweep (since {since}d)…")
+    pubmed_ok = True
     try:
         flat = fetch_from_pubmed_weekly(since_days=since)
     except Exception as e:
-        # One source means nothing to fall back on, so this run delivers
-        # nothing — but it must not look like a quiet week, and the watermark
-        # must stay put so next week's sweep covers these days too.
+        # PubMed dying no longer kills the run: the ToC sweep below reaches the
+        # same journals by an independent route. The watermark still stays put so
+        # next week's sweep re-covers these days.
         reason = f"{type(e).__name__}: {e}"
-        _log(f"❌ weekly sweep FAILED — {reason}")
-        _alert_sweep_failure(cfg, args, reason)
-        db.close()
-        return 1
+        _log(f"❌ PubMed sweep FAILED — {reason}")
+        _alert_sweep_failure(cfg, args, f"PubMed: {reason}")
+        flat, pubmed_ok = [], False
     if args.limit:
         flat = flat[: args.limit]
-    _log(f"  pubmed(journal-only): {len(flat)} papers")
+    _log(f"  pubmed(keyword+journal): {len(flat)} papers")
 
+    # --- Crossref ToC sweep: full journal coverage, no keyword gate ---------
+    toc_journals, _overlap = load_toc_config()
+    toc_papers: list[Paper] = []
+    toc_ok = bool(toc_journals)
+    if toc_journals and not args.no_toc:
+        toc_last = db.get_source_watermark(TOC_SOURCE)
+        toc_since = args.since_days or effective_since_days(
+            cfg.weekly_since_days, toc_last, max_days=cfg.max_since_days)
+        _log(f"Crossref ToC sweep over {len(toc_journals)} journals (since {toc_since}d)…")
+        try:
+            toc_papers = fetch_toc_sweep(since_days=toc_since, log=_log)
+        except Exception as e:
+            reason = f"{type(e).__name__}: {e}"
+            _log(f"❌ ToC sweep FAILED — {reason}")
+            _alert_sweep_failure(cfg, args, f"Crossref ToC: {reason}")
+            toc_papers, toc_ok = [], False
+        else:
+            _log(f"  crossref(full ToC): {len(toc_papers)} papers")
+    elif args.no_toc:
+        _log("ToC sweep skipped (--no-toc).")
+        toc_ok = False
+
+    if not pubmed_ok and not toc_ok:
+        # Nothing was collected by any route — no watermark may advance.
+        _log("❌ every sweep failed; nothing collected.")
+        db.close()
+        return 1
+
+    # Merge. PubMed records win over Crossref for the same DOI: they carry a real
+    # abstract, which the LLM filter judges far better than a bare title.
     by_id: dict[str, Paper] = {}
-    for p in flat:
+    for p in flat + toc_papers:
         by_id.setdefault(p.id, p)
-    flat = list(by_id.values())
+    merged: list[Paper] = []
+    run_dois: set[str] = set()
+    for p in sorted(by_id.values(), key=lambda x: x.source == TOC_SOURCE):
+        doi = (p.doi or "").lower()
+        if doi and doi in run_dois:
+            continue
+        if doi:
+            run_dois.add(doi)
+        merged.append(p)
+    if len(by_id) != len(merged):
+        _log(f"  cross-source DOI dedup within run: -{len(by_id) - len(merged)}")
+    flat = merged
 
     unseen_ids = db.filter_unseen(p.id for p in flat)
     new_papers = [p for p in flat if p.id in unseen_ids]
+    # A paper already pushed as `pubmed:12345` must not return as
+    # `doi:10.1038/...` merely because a different sweep found it.
+    known_dois = db.seen_dois(p.doi for p in new_papers if p.doi)
+    if known_dois:
+        before = len(new_papers)
+        new_papers = [p for p in new_papers
+                      if not (p.doi and p.doi.lower() in known_dois)]
+        _log(f"  DOI-level dedup vs seen.db: -{before - len(new_papers)}")
     _log(f"Total {len(flat)} → {len(new_papers)} new after dedup vs daily seen.db")
 
     if not new_papers:
@@ -152,7 +219,10 @@ def main() -> int:
         # Zero delta is a real answer, not a failure: the sweep ran and found
         # nothing new. Advance, or a quiet stretch widens the window forever.
         if not args.dry_run:
-            db.mark_source_success(WEEKLY_SOURCE)
+            if pubmed_ok:
+                db.mark_source_success(WEEKLY_SOURCE)
+            if toc_ok:
+                db.mark_source_success(TOC_SOURCE)
         db.close()
         return 0
 
@@ -233,8 +303,13 @@ def main() -> int:
             _log(f"↻ {len(retry)} papers left unseen for retry next run "
                  f"(errors={error_count}, held back={len(held_back)}, "
                  f"post failures={len(post_failures)})")
-        # Delivered — safe to move the window forward.
-        db.mark_source_success(WEEKLY_SOURCE)
+        # Delivered — safe to move the window forward, but only for the sweeps
+        # that actually ran. A failed sweep keeps its watermark so next week
+        # re-covers its days.
+        if pubmed_ok:
+            db.mark_source_success(WEEKLY_SOURCE)
+        if toc_ok:
+            db.mark_source_success(TOC_SOURCE)
 
     db.close()
     return 0

@@ -1,0 +1,84 @@
+# ToC 전수 스윕 대상 저널 (Crossref 기반)
+#
+# 왜 별도 소스가 필요한가
+# -----------------------
+# 1) 저널 ToC 이메일이 부분 목록인 경우가 있다. 2026-08-22 실측:
+#      Nature Communications  주간 e-alert = 섹션당 3편씩 12편 / 실제 214~296편  (~5%)
+#      PNAS                   호 알림 = front matter 15~18개 / 실제 84~106편     (~17%)
+#      ACS 8종                ealerts = 호 지면의 1.1~6.8%만 (2026-08 발신자 전환 후)
+#      iScience               50편 / 465편                                       (10.8%)
+#      Cell Reports           53편 / 145편                                       (36.5%)
+#    → 사람이 메일만 봐서는 구조적으로 못 보는 논문이 생긴다.
+# 2) weekly PubMed 스윕(fetch_from_pubmed_weekly)은 저널 화이트리스트 AND
+#    키워드 게이트다. 제목·초록에 키워드가 없으면 잡히지 않는다. 실제 누락 경로.
+# 3) publisher 사이트 직접 열람은 자동화 불가 — pnas.org는 HTTP 403,
+#    nature.com은 303 → idp.nature.com 쿠키 리다이렉트(RSS도 303).
+#    Crossref API가 유일하게 안정적인 전수 확보 경로다.
+#
+# 이메일이 이미 전수인 저널은 여기 넣지 않는다 (중복 노동). 2026-08-22 검증 결과
+# 전수로 확인된 템플릿: Nature Portfolio 월간 16종(Nat Biotechnol 44(8) 39=39),
+# Wiley 4종(Adv Sci 13(46) 66=66), AAAS 3종(Sci Adv 12(33) 85=85),
+# ScienceDirect 5종(Metab Eng 97 22=22), Cell Press 나머지 8종(호 규모 ≤46 < 상한 ~50).
+
+# Crossref 조회 시 창을 이 일수만큼 더 뒤로 넓힌다.
+# Crossref 등재는 발행 후 1~3일 지연될 수 있어, 창 경계에 걸친 논문이
+# "다음 주 창은 이미 지나갔고 이번 주 창엔 아직 없던" 상태로 영구 누락된다.
+# 중복은 seen.db가 걸러내므로 겹침은 공짜다.
+overlap_days: 3
+
+journals:
+  - name: "Nature Communications"
+    issn: "2041-1723"
+    active: true
+    # 주간 e-alert가 섹션당 3편만 노출. Biological sciences 섹션만 주당 120편.
+    note: "email 12 / actual 214-296 per week (~5%)"
+
+  - name: "Proc Natl Acad Sci U S A"
+    issn: "1091-6490"
+    active: true
+    # 호 알림에 front matter(Commentary/Perspective/Letter/In This Issue)와 정정만 실림.
+    note: "email 15-18 / actual 84-106 per issue (~17%)"
+
+  # --- 감사에서 '부분 목록'으로 확인됐으나 아직 미활성 (사용자 결정 대기) -------
+  # 켜려면 active: true 로 바꾸기만 하면 된다. 주당 유입량이 크니 min_score를
+  # 함께 조정할 것.
+  - name: "J Am Chem Soc"
+    issn: "1520-5126"
+    active: false
+    note: "ACS ealerts 전환 후 호 지면의 1.4%만 노출 (110편/호). 주당 ~110편"
+  - name: "ACS Catal"
+    issn: "2155-5435"
+    active: false
+    note: "호 지면의 1.1%만 노출 (77편/호)"
+  - name: "ACS Synth Biol"
+    issn: "2161-5063"
+    active: false
+    note: "ACS ealerts 전환 영향권. 월 ~19편으로 소규모"
+  - name: "ACS Chem Biol"
+    issn: "1554-8937"
+    active: false
+    note: "ACS ealerts 전환 영향권. 월 ~30편"
+  - name: "Biochemistry"
+    issn: "1520-4995"
+    active: false
+    note: "호 지면의 6.8%만 노출 (18편/호)"
+  - name: "J Nat Prod"
+    issn: "1520-6025"
+    active: false
+    note: "ACS ealerts 전환 영향권. 월 ~14편"
+  - name: "ACS Cent Sci"
+    issn: "2374-7951"
+    active: false
+    note: "ASAP 알림만 산발 수신. 월 ~15편"
+  - name: "JACS Au"
+    issn: "2691-3704"
+    active: false
+    note: "ACS ealerts 전환 영향권. 월 ~48편"
+  - name: "Cell Rep"
+    issn: "2211-1247"
+    active: false
+    note: "Cell Press 이메일 상한 ~50편 → 53/145 노출 (92편 누락)"
+  - name: "iScience"
+    issn: "2589-0042"
+    active: false
+    note: "50/465 노출 (411편 누락). 켜면 주당 ~117편 추가"
