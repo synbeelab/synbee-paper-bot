@@ -26,6 +26,12 @@
 # 중복은 seen.db가 걸러내므로 겹침은 공짜다.
 overlap_days: 3
 
+# 저널마다 Crossref에 예치하는 날짜가 다르다. 기본값은 pub(발행일).
+#   datefield: created  ← Elsevier(Cell Press/ScienceDirect) 필수.
+#   이쪽은 published-print를 '월' 단위로만 예치하고 published-online이 없어서,
+#   Crossref가 2026-09를 2026-09-01로 읽는다. 월 중순 주간 창에는 한 편도 안 걸린다.
+#   2026-08-14~24 실측: iScience pub 0 / created 80, Cell Reports 0 / 49, Cell 0 / 16.
+
 journals:
   - name: "Nature Communications"
     issn: "2041-1723"
@@ -39,46 +45,48 @@ journals:
     # 호 알림에 front matter(Commentary/Perspective/Letter/In This Issue)와 정정만 실림.
     note: "email 15-18 / actual 84-106 per issue (~17%)"
 
-  # --- 감사에서 '부분 목록'으로 확인됐으나 아직 미활성 (사용자 결정 대기) -------
-  # 켜려면 active: true 로 바꾸기만 하면 된다. 주당 유입량이 크니 min_score를
-  # 함께 조정할 것.
+  # --- 감사에서 '부분 목록'으로 확인된 저널 (2026-08-24 전부 활성화) ----------
+  # 게시량 상한은 두지 않는다(weekly.max_posts: null): 상한은 통과 논문을 조용히
+  # 버리고 seen.db에 기록해 영구 누락을 만든다.
   - name: "J Am Chem Soc"
     issn: "1520-5126"
-    active: false
+    active: true
     note: "ACS ealerts 전환 후 호 지면의 1.4%만 노출 (110편/호). 주당 ~110편"
   - name: "ACS Catal"
     issn: "2155-5435"
-    active: false
+    active: true
     note: "호 지면의 1.1%만 노출 (77편/호)"
   - name: "ACS Synth Biol"
     issn: "2161-5063"
-    active: false
+    active: true
     note: "ACS ealerts 전환 영향권. 월 ~19편으로 소규모"
   - name: "ACS Chem Biol"
     issn: "1554-8937"
-    active: false
+    active: true
     note: "ACS ealerts 전환 영향권. 월 ~30편"
   - name: "Biochemistry"
     issn: "1520-4995"
-    active: false
+    active: true
     note: "호 지면의 6.8%만 노출 (18편/호)"
   - name: "J Nat Prod"
     issn: "1520-6025"
-    active: false
+    active: true
     note: "ACS ealerts 전환 영향권. 월 ~14편"
   - name: "ACS Cent Sci"
     issn: "2374-7951"
-    active: false
+    active: true
     note: "ASAP 알림만 산발 수신. 월 ~15편"
   - name: "JACS Au"
     issn: "2691-3704"
-    active: false
+    active: true
     note: "ACS ealerts 전환 영향권. 월 ~48편"
   - name: "Cell Rep"
     issn: "2211-1247"
-    active: false
+    active: true
+    datefield: created
     note: "Cell Press 이메일 상한 ~50편 → 53/145 노출 (92편 누락)"
   - name: "iScience"
     issn: "2589-0042"
-    active: false
+    active: true
+    datefield: created
     note: "50/465 노출 (411편 누락). 켜면 주당 ~117편 추가"

@@ -126,18 +126,32 @@ def _to_paper(item: dict, journal_name: str) -> Paper | None:
 
 
 def fetch_journal_window(issn: str, journal_name: str,
-                         date_from: str, date_to: str) -> list[Paper]:
+                         date_from: str, date_to: str,
+                         datefield: str = "pub") -> list[Paper]:
     """Every journal-article the journal published in [date_from, date_to].
 
-    Uses `pub-date` rather than `online-pub-date`: Elsevier and AAAS leave the
-    online field empty, which silently returned zero papers during the audit.
+    `datefield` picks which Crossref date the window filters on, because
+    publishers deposit different things:
+
+      * "pub"     — best available publication date. Day-granular for Nature
+        Portfolio, PNAS and ACS. This is the default.
+      * "created" — the date the DOI was first deposited. Required for Elsevier
+        (Cell Press / ScienceDirect), which deposits `published-print` at MONTH
+        granularity and no `published-online`: Crossref reads 2026-09 as
+        2026-09-01, so a mid-month weekly window matches nothing at all.
+        Measured 2026-08-24 over 2026-08-14..24 — iScience pub 0 / created 80,
+        Cell Reports 0 / 49, Cell 0 / 16.
+
+    `created` is assigned once per DOI, so consecutive windows partition every
+    DOI with no gaps. It can over-collect when a publisher re-deposits records;
+    seen.db absorbs that, and over-collecting is the safe direction.
     """
     papers: list[Paper] = []
     cursor = "*"
     while True:
         query = urllib.parse.urlencode({
-            "filter": (f"from-pub-date:{date_from},until-pub-date:{date_to},"
-                       f"type:journal-article"),
+            "filter": (f"from-{datefield}-date:{date_from},"
+                       f"until-{datefield}-date:{date_to},type:journal-article"),
             "rows": ROWS, "cursor": cursor, "select": SELECT, "mailto": MAILTO,
         })
         msg = _get(f"{CROSSREF.format(issn=issn)}?{query}")["message"]
@@ -179,14 +193,16 @@ def fetch_toc_sweep(since_days: int, *, today: dt.date | None = None,
     failures: list[str] = []
     for j in journals:
         name, issn = j.get("name", j.get("issn", "?")), j["issn"]
+        datefield = str(j.get("datefield", "pub"))
         try:
-            got = fetch_journal_window(issn, name, date_from, date_to)
+            got = fetch_journal_window(issn, name, date_from, date_to, datefield)
         except SourceFetchError as e:
             # One dead journal must not cost the other journals their week.
             failures.append(f"{name}: {e}")
             log(f"  ! {name} ({issn}) FAILED — {e}")
             continue
-        log(f"  {name} ({issn}): {len(got)} papers")
+        suffix = "" if datefield == "pub" else f" [{datefield}-date]"
+        log(f"  {name} ({issn}): {len(got)} papers{suffix}")
         papers.extend(got)
 
     if failures and len(failures) == len(journals):
