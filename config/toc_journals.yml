@@ -90,3 +90,56 @@ journals:
     active: true
     datefield: created
     note: "50/465 노출 (411편 누락). 켜면 주당 ~117편 추가"
+
+  # --- Cell Press 나머지 8종 (2026-08-24 추가) ---------------------------------
+  # 이 8종은 호 ToC 이메일 자체는 전수다(호 규모 9~46편 < 템플릿 상한 ~50편,
+  # Cell 189(17) 실측 이메일 20항목 = Crossref 22편). 문제는 online-first다:
+  # Cell Press는 논문을 먼저 online-first로 내고 나중에 호에 배정하며, 배정 전
+  # 논문은 어느 메일에도 실리지 않는다. created 2026-06-01~08-14 기준 미배정 비율과
+  # 호 배정 지연(중위):
+  #   Trends Biotechnol 87% / 121일(최대 226일)   Trends Microbiol 62%
+  #   Cell Chem Biol    39% /  17일               Cell             34% / 31일
+  #   Cell Syst         31%                       Trends Chem      22%
+  #   Mol Cell          11% /  16일               Cell Host Microbe 10%
+  # 영구 손실은 아니지만 Trends 계열은 4개월 지연이라 주간 인지로는 누락에 가깝다.
+  # 전원 datefield: created — Elsevier는 published-print를 '월' 단위로만 예치한다.
+  - name: "Cell"
+    issn: "0092-8674"
+    active: true
+    datefield: created
+    note: "호는 전수. online-first 미배정 34%, 호 배정 지연 중위 31일"
+  - name: "Mol Cell"
+    issn: "1097-2765"
+    active: true
+    datefield: created
+    note: "미배정 11%, 지연 중위 16일"
+  - name: "Cell Syst"
+    issn: "2405-4712"
+    active: true
+    datefield: created
+    note: "미배정 31%"
+  - name: "Cell Host Microbe"
+    issn: "1931-3128"
+    active: true
+    datefield: created
+    note: "미배정 10%"
+  - name: "Cell Chem Biol"
+    issn: "2451-9456"
+    active: true
+    datefield: created
+    note: "미배정 39%, 지연 중위 17일"
+  - name: "Trends Biotechnol"
+    issn: "0167-7799"
+    active: true
+    datefield: created
+    note: "미배정 87%, 지연 중위 121일 — 이 배치에서 노출이 가장 큰 저널"
+  - name: "Trends Microbiol"
+    issn: "0966-842X"
+    active: true
+    datefield: created
+    note: "미배정 62%"
+  - name: "Trends Chem"
+    issn: "2589-5974"
+    active: true
+    datefield: created
+    note: "미배정 22%"
