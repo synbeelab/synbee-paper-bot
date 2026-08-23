@@ -2,23 +2,36 @@
 #
 # 왜 별도 소스가 필요한가
 # -----------------------
-# 1) 저널 ToC 이메일이 부분 목록인 경우가 있다. 2026-08-22 실측:
+# 스윕에 넣는 이유는 두 종류다.
+#
+# 축 1) 이메일이 그 호·기간의 목록을 아예 다 담지 못한다. 2026-08-22 실측:
 #      Nature Communications  주간 e-alert = 섹션당 3편씩 12편 / 실제 214~296편  (~5%)
 #      PNAS                   호 알림 = front matter 15~18개 / 실제 84~106편     (~17%)
-#      ACS 8종                ealerts = 호 지면의 1.1~6.8%만 (2026-08 발신자 전환 후)
 #      iScience               50편 / 465편                                       (10.8%)
 #      Cell Reports           53편 / 145편                                       (36.5%)
-#    → 사람이 메일만 봐서는 구조적으로 못 보는 논문이 생긴다.
+#    (Cell Press 템플릿은 ~50개 항목에서 끊는다. 그래서 호가 50을 넘는 둘만 잘린다.)
+#
+# 축 2) 이메일은 호 단위인데, online-first 논문은 호가 배정될 때까지 어느 메일에도
+#    없다. created 2026-06-01~08-14 기준 미배정 비율:
+#      ACS 8종            21%  (J Nat Prod 62%, ACS Cent Sci 49%, JACS 11%)
+#      Cell Press 8종  10~87%  (Trends Biotechnol 87%, 호 배정 지연 중위 121일)
+#    영구 손실은 아니지만 4개월 지연은 주간 인지로는 누락이다.
 # 2) weekly PubMed 스윕(fetch_from_pubmed_weekly)은 저널 화이트리스트 AND
 #    키워드 게이트다. 제목·초록에 키워드가 없으면 잡히지 않는다. 실제 누락 경로.
 # 3) publisher 사이트 직접 열람은 자동화 불가 — pnas.org는 HTTP 403,
 #    nature.com은 303 → idp.nature.com 쿠키 리다이렉트(RSS도 303).
 #    Crossref API가 유일하게 안정적인 전수 확보 경로다.
 #
-# 이메일이 이미 전수인 저널은 여기 넣지 않는다 (중복 노동). 2026-08-22 검증 결과
-# 전수로 확인된 템플릿: Nature Portfolio 월간 16종(Nat Biotechnol 44(8) 39=39),
-# Wiley 4종(Adv Sci 13(46) 66=66), AAAS 3종(Sci Adv 12(33) 85=85),
-# ScienceDirect 5종(Metab Eng 97 22=22), Cell Press 나머지 8종(호 규모 ≤46 < 상한 ~50).
+호·기간 목록을 전부 담는 것으로 실측 확인된 템플릿(축 1 통과):
+#   ACS ealerts (JACS 148(32) 110=110, Biochemistry 65(16) 18=18)
+#   Nature 월간(Nat Biotechnol 44(8) 39항목) · Nature 주간(656(8128) 102항목)
+#   Wiley(Adv Sci 13(46) 66항목) · AAAS(Sci Adv 12(33) 85=85)
+#   ScienceDirect(Metab Eng 97 22=22) · OUP(NAR 54(14) 63=63) · EMBO J 45(16) 19항목
+#
+# ⚠️ 2026-08-24 정정: 첫 판에서 ACS를 "호의 1.1~6.8%만 노출"로 적었던 것은 오류다.
+# 제목의 페이지 범위(PAGES 34639-34654)를 목록 범위로 해석하고 본문을 세지 않았다.
+# 세어보니 호 전수였다. journalalerts@ -> ealerts@ 전환은 템플릿 교체였을 뿐이다.
+# 교훈: 대리 지표로 판정하지 말고 이메일 본문 항목을 셀 것.
 
 # Crossref 조회 시 창을 이 일수만큼 더 뒤로 넓힌다.
 # Crossref 등재는 발행 후 1~3일 지연될 수 있어, 창 경계에 걸친 논문이
@@ -45,41 +58,41 @@ journals:
     # 호 알림에 front matter(Commentary/Perspective/Letter/In This Issue)와 정정만 실림.
     note: "email 15-18 / actual 84-106 per issue (~17%)"
 
-  # --- 감사에서 '부분 목록'으로 확인된 저널 (2026-08-24 전부 활성화) ----------
+  # --- ASAP 노출 때문에 넣은 ACS 8종 (2026-08-24 활성화) ---------------------
   # 게시량 상한은 두지 않는다(weekly.max_posts: null): 상한은 통과 논문을 조용히
   # 버리고 seen.db에 기록해 영구 누락을 만든다.
   - name: "J Am Chem Soc"
     issn: "1520-5126"
     active: true
-    note: "ACS ealerts 전환 후 호 지면의 1.4%만 노출 (110편/호). 주당 ~110편"
+    note: "이메일은 호 전수(110=110). ASAP 11%가 호 배정까지 미노출. 주당 ~110편"
   - name: "ACS Catal"
     issn: "2155-5435"
     active: true
-    note: "호 지면의 1.1%만 노출 (77편/호)"
+    note: "이메일은 호 전수. ASAP 38%가 호 배정까지 미노출"
   - name: "ACS Synth Biol"
     issn: "2161-5063"
     active: true
-    note: "ACS ealerts 전환 영향권. 월 ~19편으로 소규모"
+    note: "이메일은 호 전수. ASAP 17%. 월 ~19편으로 소규모"
   - name: "ACS Chem Biol"
     issn: "1554-8937"
     active: true
-    note: "ACS ealerts 전환 영향권. 월 ~30편"
+    note: "이메일은 호 전수. ASAP 21%. 월 ~30편"
   - name: "Biochemistry"
     issn: "1520-4995"
     active: true
-    note: "호 지면의 6.8%만 노출 (18편/호)"
+    note: "이메일은 호 전수(18=18). ASAP 14%"
   - name: "J Nat Prod"
     issn: "1520-6025"
     active: true
-    note: "ACS ealerts 전환 영향권. 월 ~14편"
+    note: "이메일은 호 전수. ASAP 62% — ACS 중 노출 최대. 월 ~14편"
   - name: "ACS Cent Sci"
     issn: "2374-7951"
     active: true
-    note: "ASAP 알림만 산발 수신. 월 ~15편"
+    note: "ASAP 49% — ACS 중 두 번째. 월 ~15편"
   - name: "JACS Au"
     issn: "2691-3704"
     active: true
-    note: "ACS ealerts 전환 영향권. 월 ~48편"
+    note: "이메일은 호 전수. ASAP 39%. 월 ~48편"
   - name: "Cell Rep"
     issn: "2211-1247"
     active: true

@@ -169,12 +169,21 @@ Internal use — SynBEE Lab.
 
 2번이 필요한 이유는 두 가지다.
 
-**(a) 저널 ToC 이메일이 부분 목록이다.** 2026-08-22 실측 — Nature Communications는
-주당 214~296편 중 12편만(섹션당 3편), PNAS는 호당 84~106편 중 front matter 15~18개만 보여준다.
-ACS는 2026년 8월 `journalalerts@` → `ealerts@` 전환 후 호 지면의 1.1~6.8%만 나온다.
-iScience는 465편 중 50편, Cell Reports는 145편 중 53편.
-전수로 확인된 곳(안 건드려도 되는 곳): Nature Portfolio 월간 16종, Wiley 4종, AAAS 3종,
-ScienceDirect 5종, Cell Press 나머지 8종.
+**(a) 이메일이 그 호·기간 목록을 다 담지 못하는 저널이 있다.** 2026-08-22 실측 —
+Nature Communications는 주당 214~296편 중 12편만(섹션당 3편), PNAS는 호당 84~106편 중
+front matter 15~18개만, iScience는 465편 중 50편, Cell Reports는 145편 중 53편.
+Cell Press 템플릿이 ~50개 항목에서 끊기 때문에 호가 50을 넘는 둘만 잘린다.
+
+**(a') 이메일은 '호' 단위인데 online-first 논문은 호 배정 전까지 어느 메일에도 없다.**
+created 2026-06-01~08-14 기준 미배정 비율 — ScienceDirect 100%, Wiley 79%,
+Cell Press 10~87%(Trends Biotechnol 87%, 호 배정 지연 중위 121일), Nature 월간 ~39%,
+ACS 21%(J Nat Prod 62%, ACS Cent Sci 49%). AAAS만 0%로 예외다.
+영구 손실은 아니지만 지연이 2주~4개월이라 주간 인지로는 누락이 된다.
+
+> ⚠️ 2026-08-24 정정: 첫 감사에서 ACS를 "호의 1.1~6.8%만 노출"로 적었던 것은 **오류**다.
+> 제목의 페이지 범위를 목록 범위로 해석하고 본문을 세지 않았다. 세어보니 호 전수였다
+> (JACS 148(32) 110=110, Biochemistry 65(16) 18=18). ACS를 스윕에 유지하는 근거는
+> 호 커버리지가 아니라 위 ASAP 노출이다.
 
 **(b) PubMed 스윕에 키워드 게이트가 있다.** 제목·초록이 키워드를 비켜가면 애초에 안 잡힌다.
 2일 창 실측: 키워드 게이트 스윕 17편 vs Crossref 스윕(두 저널만) 280편.
