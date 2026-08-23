@@ -36,7 +36,11 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30분으로는 부족하다. Crossref ToC 스윕이 붙은 뒤 한 주 분량이
+    # PubMed 85 + Crossref 503 = 582편(2026-08-23 실측)이고, 전부 LLM 판정을
+    # 거친다. 타임아웃으로 죽으면 watermark가 전진하지 않아 다음 주가 창을
+    # 넓혀 재시도하지만, 그 주의 알림은 없었던 셈이 된다.
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4

@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS seen (
 );
 CREATE INDEX IF NOT EXISTS idx_seen_pushed ON seen(pushed_at);
 CREATE INDEX IF NOT EXISTS idx_seen_score ON seen(score);
+-- 같은 논문이 소스마다 다른 id로 들어온다(pubmed:12345 vs doi:10.1038/...).
+-- id만 비교하면 PubMed로 이미 밀어놓은 논문을 Crossref 스윕이 다시 밀어버린다.
+CREATE INDEX IF NOT EXISTS idx_seen_doi ON seen(doi);
 
 CREATE TABLE IF NOT EXISTS wiki_queue (
     paper_id TEXT PRIMARY KEY,
@@ -85,6 +88,27 @@ class SeenDB:
         ).fetchall()
         seen = {r["id"] for r in rows}
         return set(ids) - seen
+
+    def seen_dois(self, dois: Iterable[str]) -> set[str]:
+        """Which of these DOIs are already recorded, under any source id.
+
+        Cross-source dedup: the same paper arrives as `pubmed:12345` from the
+        E-utilities sweep and as `doi:10.1038/...` from the Crossref ToC sweep.
+        Comparing ids alone would post it twice.
+        """
+        ids = [d.lower() for d in dois if d]
+        if not ids:
+            return set()
+        out: set[str] = set()
+        for chunk_start in range(0, len(ids), 400):   # SQLite parameter limit
+            chunk = ids[chunk_start:chunk_start + 400]
+            placeholders = ",".join("?" * len(chunk))
+            rows = self.conn.execute(
+                f"SELECT LOWER(doi) AS d FROM seen WHERE LOWER(doi) IN ({placeholders})",
+                chunk,
+            ).fetchall()
+            out |= {r["d"] for r in rows if r["d"]}
+        return out
 
     def mark_seen(self, paper: Paper, verdict: Verdict | None = None) -> None:
         self.conn.execute(

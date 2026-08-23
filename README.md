@@ -11,7 +11,8 @@
 PubMed (journals + keywords)   ─┐
 bioRxiv (keywords)              ├──►  Gemini Flash-Lite     ───►  Slack #papers-daily
 arXiv q-bio (optional)          │     (yes/no + score)            (Block Kit cards)
-RSS (top-tier journals)        ─┘
+RSS (top-tier journals)         │
+Crossref ToC (full issue)      ─┘
                                        ↓
                                 seen.db (SQLite)
                                 wiki_queue (button)
@@ -25,6 +26,7 @@ synbee-paper-bot/
 │   ├── journals.yml              # 관심 학술지 (티어별, NLM 약어)
 │   ├── keywords.yml              # 미션별 키워드 그룹
 │   ├── filter_prompt.md          # Stage 2 LLM 프롬프트
+│   ├── toc_journals.yml          # ToC 전수 스윕 대상 (이메일이 부분 목록인 저널)
 │   ├── spam_rescue.yml           # 스팸함 구제 설정 (라벨·임계값·안전장치)
 │   ├── spam_rescue_prompt.md     # 스팸/정상 판정 프롬프트
 │   └── config.yml.example        # 메인 설정 템플릿 (복사 후 사용)
@@ -32,6 +34,7 @@ synbee-paper-bot/
 │   ├── config.py                 # .env + config.yml 로더
 │   ├── models.py                 # Paper / Verdict 데이터클래스
 │   ├── sources.py                # PubMed (E-utilities) + bioRxiv API + RSS
+│   ├── crossref.py               # Crossref 전수 ToC 스윕 (키워드 게이트 없음)
 │   ├── filter.py                 # Gemini / Anthropic 필터 (Stage 2)
 │   ├── slack_dispatch.py         # Block Kit 메시지 빌더
 │   ├── storage.py                # SQLite seen.db + wiki_queue
@@ -155,3 +158,35 @@ py scripts\run_spam_rescue.py              # 적용
 ## License
 
 Internal use — SynBEE Lab.
+
+## 주간 delta 다이제스트와 Crossref ToC 스윕
+
+주간 잡(`scripts/run_weekly.py`, 토 09:30 KST)은 두 갈래로 모아 하나의 delta를 만든다.
+
+1. **PubMed 스윕** — 저널 화이트리스트 + 넓힌 키워드 그물
+2. **Crossref ToC 스윕** — `config/toc_journals.yml`의 저널이 그 창에 발행한 **모든** 논문.
+   키워드 게이트가 없다.
+
+2번이 필요한 이유는 두 가지다.
+
+**(a) 저널 ToC 이메일이 부분 목록이다.** 2026-08-22 실측 — Nature Communications는
+주당 214~296편 중 12편만(섹션당 3편), PNAS는 호당 84~106편 중 front matter 15~18개만 보여준다.
+ACS는 2026년 8월 `journalalerts@` → `ealerts@` 전환 후 호 지면의 1.1~6.8%만 나온다.
+iScience는 465편 중 50편, Cell Reports는 145편 중 53편.
+전수로 확인된 곳(안 건드려도 되는 곳): Nature Portfolio 월간 16종, Wiley 4종, AAAS 3종,
+ScienceDirect 5종, Cell Press 나머지 8종.
+
+**(b) PubMed 스윕에 키워드 게이트가 있다.** 제목·초록이 키워드를 비켜가면 애초에 안 잡힌다.
+2일 창 실측: 키워드 게이트 스윕 17편 vs Crossref 스윕(두 저널만) 280편.
+
+publisher 사이트를 직접 긁는 방법은 막혀 있다 — pnas.org는 HTTP 403,
+nature.com은 303 → idp.nature.com 쿠키 핸드셰이크(RSS도 303).
+
+```bash
+python scripts/run_weekly.py --dry-run          # Slack·DB 건드리지 않음
+python scripts/run_weekly.py --no-toc           # ToC 스윕만 끄고 기존 동작
+```
+
+한 주 분량은 582편(PubMed 85 + Crossref 503, 2026-08-23 실측)이고 전부 LLM 판정을 거친다.
+대상 저널을 늘리려면 `config/toc_journals.yml`에서 `active: true`로 바꾸면 된다
+(ACS 8종·iScience·Cell Reports는 이미 등재돼 있고 꺼져 있다).
