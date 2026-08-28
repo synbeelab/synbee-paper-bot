@@ -33,6 +33,20 @@ def _int_or_none(value: str) -> int | None:
         return None
 
 
+def _say(message: str) -> None:
+    """Log, but never let logging decide whether the bot runs.
+
+    Keep the text ASCII: a cp949 console turned a decorative arrow in this
+    banner into a UnicodeEncodeError, which left $GITHUB_OUTPUT empty and would
+    have skipped the digest. Belt and braces — the write comes first, and this
+    swallows what is left.
+    """
+    try:
+        print(message)
+    except (UnicodeEncodeError, OSError):
+        pass
+
+
 def main() -> int:
     workflow_file = os.environ.get("WORKFLOW_FILE", "")
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -48,24 +62,32 @@ def main() -> int:
         )
         should_run = True
     else:
-        should_run = decide(
-            lambda: fetch_successful_runs(repo, workflow_file, token=token),
-            event_name=event_name,
-            current_run_id=run_id,
-        )
+        try:
+            should_run = decide(
+                lambda: fetch_successful_runs(repo, workflow_file, token=token),
+                event_name=event_name,
+                current_run_id=run_id,
+            )
+        except BaseException:  # noqa: BLE001 — last line of fail-open defence
+            # `decide` already swallows the expected failures; anything that
+            # still escapes must not be allowed to skip the delivery.
+            should_run = True
 
-    if should_run:
-        print(f"✓ proceeding ({event_name})")
-    else:
-        print(
-            f"↷ skipping: {workflow_file} already delivered today (KST). "
-            "This is a catch-up cron doing its job."
-        )
-
+    # Write the answer before anything else can go wrong. An empty
+    # `should_run` reads as "not true" at the gate, so a guard that dies here
+    # would skip the very delivery it exists to protect.
     output = os.environ.get("GITHUB_OUTPUT")
     if output:
         with open(output, "a", encoding="utf-8") as handle:
             handle.write(f"should_run={'true' if should_run else 'false'}\n")
+
+    if should_run:
+        _say(f"OK: proceeding ({event_name})")
+    else:
+        _say(
+            f"SKIP: {workflow_file} already delivered today (KST). "
+            "This is a catch-up cron doing its job."
+        )
 
     return 0
 

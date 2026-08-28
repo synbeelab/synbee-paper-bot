@@ -12,6 +12,7 @@ entirely. The second is the expensive one, so the guard fails OPEN.
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
 import sys
 from datetime import datetime, timedelta, timezone
@@ -340,3 +341,87 @@ def test_cli_survives_a_missing_github_output(monkeypatch):
     cli = _load_guard_cli()
 
     assert cli.main() == 0
+
+
+# --- the guard must never be the reason a run is skipped ---------------------
+
+
+def test_cli_writes_the_output_before_it_prints(tmp_path, monkeypatch):
+    """Printing is the last thing that happens, and it cannot fail the step.
+
+    Found the hard way: the first version printed a ✓/↷ banner *before* writing
+    $GITHUB_OUTPUT, and on a cp949 console the print raised UnicodeEncodeError.
+    The output file stayed empty, so `needs.guard.outputs.should_run` was empty,
+    the gate read it as "not true" — and the digest would have been skipped by
+    the very guard that promises to fail open.
+    """
+    # Arrange
+    out = tmp_path / "gh_output"
+    for key, value in {
+        "WORKFLOW_FILE": "daily.yml",
+        "GITHUB_REPOSITORY": "synbeelab/synbee-paper-bot",
+        "GITHUB_TOKEN": "t0ken",
+        "GITHUB_EVENT_NAME": "schedule",
+        "GITHUB_RUN_ID": "555",
+        "GITHUB_OUTPUT": str(out),
+    }.items():
+        monkeypatch.setenv(key, value)
+    cli = _load_guard_cli()
+    monkeypatch.setattr(cli, "fetch_successful_runs", lambda *a, **k: [])
+
+    def unprintable(*_a, **_k):
+        raise UnicodeEncodeError("cp949", "↷", 0, 1, "illegal multibyte sequence")
+
+    monkeypatch.setattr("builtins.print", unprintable)
+
+    # Act
+    assert cli.main() == 0
+
+    # Assert
+    assert out.read_text(encoding="utf-8").strip() == "should_run=true"
+
+
+def test_everything_the_guard_prints_is_ascii():
+    """Runners are UTF-8, but a guard that can crash on output is not a guard.
+
+    Checks only what reaches a console, so Korean comments and docstrings stay
+    allowed here as everywhere else in the repo.
+    """
+    tree = ast.parse((ROOT / "scripts" / "catchup_guard.py").read_text(encoding="utf-8"))
+
+    printed: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (isinstance(node.func, ast.Name) and node.func.id in {"print", "_say"}):
+            continue
+        for piece in ast.walk(node):
+            if isinstance(piece, ast.Constant) and isinstance(piece.value, str):
+                printed.append(piece.value)
+
+    assert printed, "expected the guard to log something"
+    offenders = [text for text in printed if not text.isascii()]
+    assert not offenders, f"keep the guard's own output plain ASCII: {offenders}"
+
+
+def test_cli_runs_anyway_when_the_decision_itself_explodes(tmp_path, monkeypatch):
+    """Last line of defence: nothing escaping `decide` may skip the delivery."""
+    out = tmp_path / "gh_output"
+    for key, value in {
+        "WORKFLOW_FILE": "daily.yml",
+        "GITHUB_REPOSITORY": "synbeelab/synbee-paper-bot",
+        "GITHUB_TOKEN": "t0ken",
+        "GITHUB_EVENT_NAME": "schedule",
+        "GITHUB_RUN_ID": "555",
+        "GITHUB_OUTPUT": str(out),
+    }.items():
+        monkeypatch.setenv(key, value)
+    cli = _load_guard_cli()
+
+    def explode(*_a, **_k):
+        raise KeyboardInterrupt("runner went away")
+
+    monkeypatch.setattr(cli, "decide", explode)
+
+    assert cli.main() == 0
+    assert out.read_text(encoding="utf-8").strip() == "should_run=true"
