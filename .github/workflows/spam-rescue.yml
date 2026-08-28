@@ -2,8 +2,11 @@ name: Gmail spam rescue
 
 on:
   schedule:
-    # 매일 KST 07:00 = UTC 22:00 (전날). cron은 UTC.
-    - cron: "0 22 * * *"
+    # 정시(:00)를 피해 13분 앞당김 — daily.yml의 주석 참고.
+    - cron: "47 21 * * *"    # 06:47 KST
+    # 이벤트 드롭 대비 catch-up. 이미 구제가 돌아간 날은 guard가 스킵한다.
+    - cron: "13 1 * * *"     # 10:13 KST
+    - cron: "13 4 * * *"     # 13:13 KST
   workflow_dispatch:
     inputs:
       dry_run:
@@ -22,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  actions: read     # guard가 이 워크플로우의 지난 run을 조회한다
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -31,7 +35,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # GitHub는 schedule 이벤트를 best-effort로 발행한다 — 2026-08-26 전 워크플로우가
+  # 5시간 지연됐고, 2026-08-27 사이클은 run 자체가 생기지 않아 08:00 KST 다이제스트가
+  # 오지 않았다. 그래서 위에 catch-up cron을 뒀고, 이 guard가 "이미 배달된 날에는
+  # 조용히 넘어가기"를 맡는다. 판정 기준은 KST 하루 1회 배달(synbee_bot/catchup.py).
+  # 확인에 실패하면 fail-open, 즉 그냥 실행한다 — 중복 1건이 누락 하루보다 싸다.
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if today's delivery already went out
+        id: check
+        env:
+          WORKFLOW_FILE: "spam-rescue.yml"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/catchup_guard.py
+
   run:
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

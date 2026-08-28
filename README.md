@@ -47,12 +47,13 @@ synbee-paper-bot/
 │   ├── sanity_check.py           # 실시간 PubMed hit 수 검증
 │   ├── run_daily.py              # 메인 orchestrator (cron 진입점)
 │   ├── run_spam_rescue.py        # 스팸함 구제 진입점
+│   ├── catchup_guard.py          # catch-up cron이 중복 배달하지 않게 막는 guard
 │   ├── gmail_auth_setup.py       # Gmail refresh token 1회 발급 헬퍼
 │   ├── slack_setup_helper.py     # 토큰 검증 + 채널 목록
 │   └── slack_app_manifest.yaml   # Slack App 자동 생성용 manifest
 ├── .github/workflows/
-│   ├── daily.yml                 # 매일 KST 08:00 cron
-│   ├── spam-rescue.yml           # 매일 KST 07:00 cron — 스팸함 구제
+│   ├── daily.yml                 # 매일 KST 07:47 cron (+ catch-up 10:23·13:23)
+│   ├── spam-rescue.yml           # 매일 KST 06:47 cron — 스팸함 구제 (+ catch-up)
 │   └── sanity-check.yml          # 수동 트리거 hit 수 검증
 ├── data/                         # SQLite 등 (gitignored)
 ├── .env.example

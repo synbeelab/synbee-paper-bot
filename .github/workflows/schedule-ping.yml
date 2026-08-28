@@ -15,10 +15,13 @@ name: SynBEE 일정 채널 ping
 on:
   schedule:
     - cron: "40 23 * * *"    # 08:40 KST daily (10 min after the 08:30 invitation routine)
+    # 이벤트 드롭 대비 catch-up — 늦은 핑이라도 없는 핑보다 낫다.
+    - cron: "53 1 * * *"     # 10:53 KST
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read     # guard가 이 워크플로우의 지난 run을 조회한다
 
 # keepalive 잡이 JavaScript 액션이므로 필요. GitHub는 2026-09-16에 Node 20을 제거한다.
 env:
@@ -29,7 +32,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # GitHub는 schedule 이벤트를 best-effort로 발행한다 — 2026-08-26 전 워크플로우가
+  # 5시간 지연됐고, 2026-08-27 사이클은 run 자체가 생기지 않아 08:00 KST 다이제스트가
+  # 오지 않았다. 그래서 위에 catch-up cron을 뒀고, 이 guard가 "이미 배달된 날에는
+  # 조용히 넘어가기"를 맡는다. 판정 기준은 KST 하루 1회 배달(synbee_bot/catchup.py).
+  # 확인에 실패하면 fail-open, 즉 그냥 실행한다 — 중복 1건이 누락 하루보다 싸다.
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if today's delivery already went out
+        id: check
+        env:
+          WORKFLOW_FILE: "schedule-ping.yml"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/catchup_guard.py
+
   ping:
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

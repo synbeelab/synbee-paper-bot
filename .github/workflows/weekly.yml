@@ -2,7 +2,7 @@ name: SynBEE weekly journal digest
 
 on:
   schedule:
-    # 매주 토 KST 09:30 = 토 UTC 00:30. daily(명목 08:00 = 23:00 UTC)보다 뒤에 돌아야
+    # 매주 토 KST 09:30 = 토 UTC 00:30. daily(명목 07:47 KST = 22:47 UTC)보다 뒤에 돌아야
     # 한다: seen.db를 Actions 캐시로 주고받으므로, weekly가 daily의 cache/save 전에
     # cache/restore 하면 그 주 토요일 논문이 weekly에 "미확인"으로 보여 중복 게시되고,
     # weekly가 나중에 save하면 daily 추가분이 빠진 db가 최신 캐시가 되어 다음날 또 올라간다.
@@ -11,6 +11,10 @@ on:
     # 그래도 중복이 관측되면 on: workflow_run: 으로 daily 완료에 체이닝하고
     # job에서 date -u +%u 로 토요일만 통과시키는 방식으로 올릴 것.
     - cron: "30 0 * * 6"      # Sat 00:30 UTC = Sat 09:30 KST
+    # 이벤트 드롭 대비 catch-up. daily의 catch-up(01:23·04:23 UTC)과 겹치지 않게
+    # 한 시간씩 물려 뒀다 — seen.db 캐시를 서로 밟지 않게 하려는 것.
+    - cron: "23 2 * * 6"      # Sat 11:23 KST
+    - cron: "23 5 * * 6"      # Sat 14:23 KST
   workflow_dispatch:
     inputs:
       since_days:
@@ -25,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  actions: read     # guard가 이 워크플로우의 지난 run을 조회한다
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -34,7 +39,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # GitHub는 schedule 이벤트를 best-effort로 발행한다 — 2026-08-26 전 워크플로우가
+  # 5시간 지연됐고, 2026-08-27 사이클은 run 자체가 생기지 않아 08:00 KST 다이제스트가
+  # 오지 않았다. 그래서 위에 catch-up cron을 뒀고, 이 guard가 "이미 배달된 날에는
+  # 조용히 넘어가기"를 맡는다. 판정 기준은 KST 하루 1회 배달(synbee_bot/catchup.py).
+  # 확인에 실패하면 fail-open, 즉 그냥 실행한다 — 중복 1건이 누락 하루보다 싸다.
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if today's delivery already went out
+        id: check
+        env:
+          WORKFLOW_FILE: "weekly.yml"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/catchup_guard.py
+
   run:
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     # 30분으로는 부족하다. Crossref ToC 스윕이 붙은 뒤 한 주 분량이
     # PubMed 85 + Crossref 503 = 582편(2026-08-23 실측)이고, 전부 LLM 판정을

@@ -2,8 +2,13 @@ name: SynBEE daily paper digest
 
 on:
   schedule:
-    # 매일 KST 08:00 = UTC 23:00 (전날). cron은 UTC.
-    - cron: "0 23 * * *"     # 매일 UTC 23:00 = 매일 KST 08:00 (주말 포함)
+    # 정시(:00) cron은 GitHub에서 가장 혼잡한 슬롯이라 지연·드롭이 잦다.
+    # 13분 앞당겨 잡아 평시 지연(실측 8~14분)을 흡수하고 08:00 KST에 닿게 한다.
+    - cron: "47 22 * * *"    # 07:47 KST (주말 포함)
+    # 이벤트가 아예 드롭된 날을 위한 catch-up. 이미 배달된 날은 guard가 스킵하고,
+    # 새 논문이 0편이면 run_daily.py가 애초에 아무것도 게시하지 않는다.
+    - cron: "23 1 * * *"     # 10:23 KST
+    - cron: "23 4 * * *"     # 13:23 KST
   workflow_dispatch:
     inputs:
       since_days:
@@ -18,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  actions: read     # guard가 이 워크플로우의 지난 run을 조회한다
 
 # Opt-in to Node.js 24 runtime for JavaScript actions.
 # GitHub will force this default 2026-06-02 and remove Node 20 on 2026-09-16.
@@ -30,7 +36,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # GitHub는 schedule 이벤트를 best-effort로 발행한다 — 2026-08-26 전 워크플로우가
+  # 5시간 지연됐고, 2026-08-27 사이클은 run 자체가 생기지 않아 08:00 KST 다이제스트가
+  # 오지 않았다. 그래서 위에 catch-up cron을 뒀고, 이 guard가 "이미 배달된 날에는
+  # 조용히 넘어가기"를 맡는다. 판정 기준은 KST 하루 1회 배달(synbee_bot/catchup.py).
+  # 확인에 실패하면 fail-open, 즉 그냥 실행한다 — 중복 1건이 누락 하루보다 싸다.
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if today's delivery already went out
+        id: check
+        env:
+          WORKFLOW_FILE: "daily.yml"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/catchup_guard.py
+
   run:
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
