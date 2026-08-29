@@ -65,6 +65,11 @@ class Config:
     slack_use_test: bool
     slack_max_posts: int | None
 
+    # Pre-LLM shaping (see abstracts.py / prefilter.py)
+    abstract_backfill_enabled: bool
+    abstract_backfill_timeout: int
+    prefilter_non_articles: bool
+
     # Weekly journal-sweep digest (delta vs daily)
     weekly_enabled: bool
     weekly_channel: str
@@ -74,6 +79,9 @@ class Config:
     weekly_llm_provider: str
     weekly_llm_model: str
     weekly_llm_fallback_models: list[str]
+    weekly_batch_enabled: bool
+    weekly_batch_deadline_minutes: int
+    weekly_batch_poll_seconds: int
 
     # Storage
     seen_db_path: Path
@@ -120,6 +128,9 @@ def load_config(config_path: Path | None = None) -> Config:
     wiki = cfg.get("wiki_queue", {})
     weekly = cfg.get("weekly", {}) or {}
     weekly_llm = weekly.get("llm", {}) or {}
+    weekly_batch = weekly_llm.get("batch", {}) or {}
+    backfill = cfg.get("abstract_backfill", {}) or {}
+    prefilter = cfg.get("prefilter", {}) or {}
 
     return Config(
         pubmed_enabled=bool(pubmed.get("enabled", True)),
@@ -144,6 +155,9 @@ def load_config(config_path: Path | None = None) -> Config:
         slack_channel_test=str(slack.get("channels", {}).get("test", "")),
         slack_use_test=bool(slack.get("use_test_channel", True)),
         slack_max_posts=_optional_cap(slack.get("max_posts_per_run")),
+        abstract_backfill_enabled=bool(backfill.get("enabled", True)),
+        abstract_backfill_timeout=int(backfill.get("timeout_seconds", 30)),
+        prefilter_non_articles=bool(prefilter.get("non_articles", True)),
         weekly_enabled=bool(weekly.get("enabled", True)),
         weekly_channel=str(weekly.get("channel", "")),
         weekly_since_days=int(weekly.get("since_days", 7)),
@@ -152,6 +166,9 @@ def load_config(config_path: Path | None = None) -> Config:
         weekly_llm_provider=str(weekly_llm.get("provider", "anthropic")),
         weekly_llm_model=str(weekly_llm.get("model", "claude-haiku-4-5-20251001")),
         weekly_llm_fallback_models=[str(m) for m in (weekly_llm.get("fallback_models") or [])],
+        weekly_batch_enabled=bool(weekly_batch.get("enabled", False)),
+        weekly_batch_deadline_minutes=int(weekly_batch.get("deadline_minutes", 90)),
+        weekly_batch_poll_seconds=int(weekly_batch.get("poll_seconds", 30)),
         seen_db_path=PROJECT_ROOT / str(storage.get("seen_db", "data/seen.db")),
         wiki_github_repo=str(wiki.get("github_repo", "")),
         wiki_vault_raw_dir=Path(str(wiki.get("vault_raw_dir", "D:/Obsidian_Vault/Dongsoo/raw"))),

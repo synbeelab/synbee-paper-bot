@@ -36,8 +36,11 @@ for _stream in (sys.stdout, sys.stderr):
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from synbee_bot.abstracts import backfill_abstracts  # noqa: E402
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
+from synbee_bot.gemini_batch import filter_batch_offline  # noqa: E402
+from synbee_bot.prefilter import drop_non_articles  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.slack_dispatch import (  # noqa: E402
     make_slack_client, post_papers, post_source_alert, post_summary,
@@ -226,6 +229,19 @@ def main() -> int:
         db.close()
         return 0
 
+    # --- shape the delta before it costs a filter call ----------------------
+    # Non-articles are dropped but deliberately NOT marked seen: if a pattern
+    # here ever fires wrongly, the paper must still be reachable next run.
+    if cfg.prefilter_non_articles:
+        new_papers = drop_non_articles(new_papers, log=_log)
+    # Crossref carries no abstract for Elsevier at all and misses 62% of Nature
+    # Communications, so without this the filter judges most of the sweep on the
+    # title alone. Best-effort: a paper whose abstract cannot be found is still
+    # filtered, exactly as before.
+    if cfg.abstract_backfill_enabled and new_papers:
+        new_papers = backfill_abstracts(
+            new_papers, timeout=cfg.abstract_backfill_timeout, log=_log)
+
     if cfg.llm_enabled and not args.no_llm:
         provider = cfg.weekly_llm_provider
         api_key = cfg.anthropic_api_key if provider == "anthropic" else cfg.gemini_api_key
@@ -235,12 +251,28 @@ def main() -> int:
         else:
             prompt = load_prompt(cfg.llm_prompt_path)
             _log(f"LLM filter ({provider}/{cfg.weekly_llm_model}) on {len(new_papers)} papers…")
-            results = filter_batch(
-                new_papers, prompt=prompt,
-                provider=provider, model=cfg.weekly_llm_model,
-                fallback_models=cfg.weekly_llm_fallback_models,
-                api_key=api_key, parallel=8, timeout=cfg.llm_timeout,
-            )
+            results = []
+            pending = new_papers
+            # Batch mode is the same model on the same prompt at half price; it
+            # only ever hands back papers it did not finish, and those fall
+            # through to the interactive path below so the digest still ships.
+            if provider == "gemini" and cfg.weekly_batch_enabled:
+                done, pending = filter_batch_offline(
+                    pending, prompt=prompt, model=cfg.weekly_llm_model,
+                    api_key=api_key,
+                    deadline_seconds=cfg.weekly_batch_deadline_minutes * 60,
+                    poll_seconds=cfg.weekly_batch_poll_seconds, log=_log,
+                )
+                results.extend(done)
+            if pending:
+                if results:
+                    _log(f"  interactive filter on the remaining {len(pending)}…")
+                results.extend(filter_batch(
+                    pending, prompt=prompt,
+                    provider=provider, model=cfg.weekly_llm_model,
+                    fallback_models=cfg.weekly_llm_fallback_models,
+                    api_key=api_key, parallel=8, timeout=cfg.llm_timeout,
+                ))
     else:
         results = [(p, Verdict("YES", None, 5, "(LLM filter disabled)")) for p in new_papers]
 
