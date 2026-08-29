@@ -65,6 +65,11 @@ def _wire(rw, monkeypatch, db_path, *, fetch, argv=("--no-llm", "--no-slack")):
         seen_db_path = db_path
 
     monkeypatch.setattr(rw, "fetch_from_pubmed_weekly", fetch)
+    # Without this the Crossref ToC sweep escapes to the live network: every
+    # test in this file was fetching ~850 real records, and the "a failed sweep
+    # exits non-zero" test was passing/failing on whether Crossref happened to
+    # be up — it delivered a real week's papers while PubMed was stubbed dead.
+    monkeypatch.setattr(rw, "load_toc_config", lambda: ([], 3))
     monkeypatch.setattr(rw, "SeenDB", lambda _p: SeenDB(db_path))
     monkeypatch.setattr(rw, "load_config", lambda: Full())
     monkeypatch.setattr(sys, "argv", ["run_weekly.py", *argv])
