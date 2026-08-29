@@ -55,6 +55,12 @@ def _wire(rw, monkeypatch, db_path, *, fetch, argv=("--no-llm", "--no-slack")):
         weekly_min_score = 6
         weekly_max_posts = None
         llm_enabled = False
+        prefilter_non_articles = False
+        abstract_backfill_enabled = False
+        abstract_backfill_timeout = 5
+        weekly_batch_enabled = False
+        weekly_batch_deadline_minutes = 1
+        weekly_batch_poll_seconds = 0
         max_since_days = 30
         seen_db_path = db_path
 

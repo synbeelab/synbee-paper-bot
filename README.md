@@ -7,15 +7,15 @@
 ## Architecture
 
 ```
-[Stage 1 — collect]                    [Stage 2 — filter]            [Deliver]
+[Stage 1 — collect]              [1.5 — shape]        [Stage 2 — filter]      [Deliver]
 PubMed (journals + keywords)   ─┐
-bioRxiv (keywords)              ├──►  Gemini Flash-Lite     ───►  Slack #papers-daily
-arXiv q-bio (optional)          │     (yes/no + score)            (Block Kit cards)
-RSS (top-tier journals)         │
-Crossref ToC (full issue)      ─┘
-                                       ↓
-                                seen.db (SQLite)
-                                wiki_queue (button)
+bioRxiv (keywords)              │   비논문 제거        gemini-2.5-flash   ─►  Slack
+arXiv q-bio (optional)          ├─► abstract 백필  ─►  (yes/no + score)       #papers-daily
+RSS (top-tier journals)         │   (Europe PMC)       주간은 Batch API
+Crossref ToC (full issue)      ─┘                      (반값, 같은 판정)
+                                                            ↓
+                                                     seen.db (SQLite)
+                                                     wiki_queue (button)
 ```
 
 ## Project layout
@@ -35,7 +35,10 @@ synbee-paper-bot/
 │   ├── models.py                 # Paper / Verdict 데이터클래스
 │   ├── sources.py                # PubMed (E-utilities) + bioRxiv API + RSS
 │   ├── crossref.py               # Crossref 전수 ToC 스윕 (키워드 게이트 없음)
+│   ├── prefilter.py              # 정정·철회·권두자료 제거 (LLM 앞단, 유일한 사전 드롭)
+│   ├── abstracts.py              # Europe PMC abstract 백필 (Crossref가 안 주는 59%)
 │   ├── filter.py                 # Gemini / Anthropic 필터 (Stage 2)
+│   ├── gemini_batch.py           # Batch API 경로 — 같은 판정, 반값 (주간 전용)
 │   ├── slack_dispatch.py         # Block Kit 메시지 빌더
 │   ├── storage.py                # SQLite seen.db + wiki_queue
 │   └── spam_rescue/              # Gmail 스팸함 구제 (독립 서브패키지)
@@ -113,17 +116,53 @@ py scripts\run_daily.py --since-days 1
 | 주 1회 | 누락 사례에서 키워드/저널 보강 |
 | 월 1회 | `filter_prompt.md` 규칙 보강 |
 
-## Stage 2 LLM 모델 선택
+## Stage 2 LLM — 실측 비용과 절감 (2026-08-30)
 
-기본: **Gemini 2.5 Flash-Lite** (필터링 yes/no는 가장 저렴한 모델로 충분).
+운영 모델은 **gemini-2.5-flash**. 실제 논문 30편으로 잰 콜당 토큰:
 
-비용 비교(논문 1편당, abstract 입력 ~500 토큰 + JSON 출력 ~100 토큰):
+| 항목 | 토큰/콜 | 단가 | 비용/콜 |
+|---|---:|---:|---:|
+| prompt | 1,356 (그중 351만 캐시 히트) | $0.30/M | $0.00031 |
+| output (JSON) | 112 | $2.50/M | $0.00028 |
+| **thinking** | **1,384** | $2.50/M | **$0.00346** |
+| | | | **$0.00405** |
 
-| 모델 | 1편당 | 일 100편 × 30일 |
-|---|---|---|
-| Gemini Flash-Lite | ~$0.00005 | **~$0.15/월** |
-| Gemini 2.5 Flash | ~$0.0002 | ~$0.6/월 |
-| Claude Haiku 4.5 | ~$0.0006 | ~$1.8/월 |
+호출량은 주간 스윕이 848편/주, 일간이 4~19편/일 → **월 ~4,350콜 ≈ $17.6/월**.
+**thinking이 그중 85.4%**다.
+
+### thinking을 줄이는 안이 왜 전부 기각됐나
+
+같은 30편에 thinking budget만 바꿔 재봤다.
+
+| 설정 | thinking/콜 | min_score 6 통과 | 결과 |
+|---|---:|---:|---|
+| dynamic (현재) | 1,384 | 5 | 기준 |
+| budget=0 | 0 | 1 | **YES 4편 유실** |
+| budget=512 | 452 | 5 | 일치 |
+| budget=1024 | 841 | 5 | 1편 유실 + 1편 신규 |
+| budget=2048 | 1,487 | 4 | 1편 유실 |
+
+budget=2048은 dynamic보다 **더** 생각하고도 1편을 놓쳤다. 즉 이 필터에는
+설정과 무관한 고유 변동성이 경계선 논문 5편당 1편 수준으로 있고, 그래서
+budget=512의 "완전 일치"도 노이즈와 구분되지 않는다. 절감액($10/월)보다
+그것을 증명하는 리플레이 게이트가 더 비싸므로 thinking은 손대지 않는다.
+
+### 대신 하는 것 — Batch API
+
+같은 모델·같은 프롬프트·같은(설정하지 않은, 즉 dynamic) thinking을 정확히
+반값에 돌린다. 판정이 근사해지는 게 아니라 동일한 계산이므로 누락 위험이
+정의상 0이고, 대가는 지연시간뿐이다. 주간 스윕이 전체 콜의 90%라 거기만 켜서
+**월 $17.6 → $9.7 (−45%)**. deadline 안에 안 끝나면 job을 취소하고 남은 논문을
+기존 인터랙티브 경로로 돌리므로 최악의 경우가 "지금과 동일"이지 미배달이 아니다
+(`synbee_bot/gemini_batch.py`, `weekly.llm.batch`).
+
+2026-08-30 실호출 검증(논문 5편): **7.1분에 완료, 5/5 판정 회수**, 편당 thinking
+1,832 토큰 — 인터랙티브(1,384)와 같은 수준이다. 즉 배치는 thinking을 깎지 않는다.
+848편 배치의 소요시간은 아직 안 재봤고, 런 로그의 `batch succeeded in N min`을
+보고 `deadline_minutes`(기본 90)를 조정하면 된다.
+
+결과 매핑은 순서가 아니라 **요청마다 붙인 key**로 한다. Batch API는 응답 순서를
+보장하지 않고, 엉뚱한 논문에 붙은 판정은 어떤 과금보다 나쁜 버그다.
 
 ## Gmail 스팸함 구제 봇
 
@@ -200,3 +239,51 @@ python scripts/run_weekly.py --no-toc           # ToC 스윕만 끄고 기존 �
 한 주 분량은 582편(PubMed 85 + Crossref 503, 2026-08-23 실측)이고 전부 LLM 판정을 거친다.
 대상 저널을 늘리려면 `config/toc_journals.yml`에서 `active: true`로 바꾸면 된다
 (ACS 8종·iScience·Cell Reports는 이미 등재돼 있고 꺼져 있다).
+
+## 세 번째 구멍 — Crossref는 abstract를 안 준다 (2026-08-30)
+
+ToC 스윕 1주치 848편을 세어보니 **498편(58.7%)이 abstract 없이 LLM에 들어가고
+있었다.** 프롬프트에 `(abstract unavailable)`만 박힌 채 제목만으로 YES/NO·score·
+한 줄 요약이 만들어지고 있었던 것이다.
+
+| 출처 | abstract 없음 |
+|---|---|
+| Cell Press / Elsevier 10종 (iScience, Cell Reports, Cell, Mol Cell, Cell Host & Microbe, Cell Chem Biol, Cell Systems, Trends ×3) | **100%** (220편 전부) |
+| Nature Communications | 61.6% (414편 중 255) |
+| PNAS | 12.7% |
+| JACS · JACS Au · J Nat Prod · Biochemistry | 0% |
+
+Elsevier는 Crossref에 abstract를 아예 예치하지 않는다. 일간 봇도 같은 구멍이
+있는데, RSS 소스는 애초에 summary 없이 엔트리를 돌려준다(`sources.py`).
+
+`synbee_bot/abstracts.py`가 DOI로 Europe PMC를 조회해 채운다. 누락 DOI 21건
+표본에서 13건(62%) 복구 — Cell Press 계열은 거의 다 되고, 갓 나온 Nature
+Communications·iScience는 PMC 색인 전이라 실패한다. **실패한 논문은 seen 처리되지
+않으므로 다음 런이 다시 시도한다.**
+
+입력 토큰이 늘지만 입력은 콜당 비용의 ~7%뿐이라 실질 증가는 월 $0.5 수준이다.
+Batch 절감액($7.9/월)의 6%로 사는 recall 개선.
+
+## 사전 드롭은 여기 한 곳뿐 (`prefilter.py`)
+
+Crossref 스윕은 이미 `type:journal-article`을 걸지만, 출판사는 정정·철회 공지와
+호 권두자료도 그 타입으로 예치한다. 실측 848편 중 21편(2.5%):
+
+```
+Author Correction: … / Publisher Correction: … / Retraction Note: …
+Correction for Sharp et al., …        (PNAS 형식)
+Retraction notice to “…”              (Elsevier 형식)
+Issue Editorial Masthead              (ACS)
+```
+
+절대 YES가 될 수 없으므로 LLM에 보내지 않는다. 다만 이 봇에서 논문이 LLM 이전에
+버려지는 유일한 지점이라:
+
+- 패턴은 **라벨로 쓰인 경우만** 잡는다. 콜론·대시·괄호로 끊기거나 제목 전체이거나
+  `to`/`for`가 뒤따를 때만. 맨 단어를 잡으면 "Retraction-resistant synthetic gene
+  circuits"와 "Contents of the polyketide chemical space"를 먹는다 — 사전 필터가
+  영구 누락으로 바뀌는 경로가 정확히 이것이다.
+- Editorial·Comment on·Reply to·Correspondence는 **통과시킨다.** 방법에 대한 실제
+  논증을 담을 수 있고, 같은 주 실측에서 1편뿐이라 절감액이 없다.
+- 버려진 항목은 **seen 처리하지 않는다.** 패턴이 잘못 발화해도 다음 런에서 회수된다.
+- 버려진 제목은 런 로그에 하나씩 찍힌다. 조용한 절삭은 "원래 없었다"로 읽힌다.
