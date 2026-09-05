@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import Paper
+from .prefilter import is_non_article
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -103,8 +104,17 @@ def pubmed_fetch_papers(pmids: list[str]) -> list[Paper]:
         root = ET.fromstring(text)
         for art in root.findall(".//PubmedArticle"):
             paper = _parse_pubmed_article(art)
-            if paper:
-                out.append(paper)
+            if not paper:
+                continue
+            # PubMed labels errata and retractions outright, and its erratum
+            # records often carry the ORIGINAL paper's title — so the title
+            # patterns in prefilter.py cannot catch them. Drop them here, loudly.
+            pub_types = {(el.text or "").strip()
+                         for el in art.findall(".//PublicationTypeList/PublicationType")}
+            if is_non_article(paper.title, pub_types):
+                sys.stderr.write(f"  · non-article dropped: {paper.title[:100]}\n")
+                continue
+            out.append(paper)
         time.sleep(0.35)
     return out
 

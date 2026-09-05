@@ -40,6 +40,16 @@ llm_filter:
   timeout_seconds: 30
   # API key는 .env에서 GEMINI_API_KEY 로드
 
+# --- Stage 1.5: 필터에 넣기 전 정리 ---
+# 2026-08-30 실측(ToC sweep 1주, 848편): 18편(2.1%)이 Author Correction·
+# Retraction Note 같은 비논문 항목이었다. 절대 YES가 될 수 없으므로 LLM에
+# 보내지 않는다. 2026-09-05 실측: score 7로 게시된 "Correction to ..." 1건.
+# 범위는 정정·정오·철회뿐이다 — 권두자료(Issue Information·Masthead·
+# "Subscription and Copyright information")와 Editorial/Comment/Reply는
+# 여기서 안 거르고 프롬프트의 NO 목록이 판정한다. 자세한 근거는 prefilter.py.
+prefilter:
+  non_articles: true
+
 # --- Slack ---
 slack:
   enabled: true
