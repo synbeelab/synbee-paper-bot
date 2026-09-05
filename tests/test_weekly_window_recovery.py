@@ -55,6 +55,7 @@ def _wire(rw, monkeypatch, db_path, *, fetch, argv=("--no-llm", "--no-slack")):
         weekly_min_score = 6
         weekly_max_posts = None
         llm_enabled = False
+        prefilter_non_articles = True
         max_since_days = 30
         seen_db_path = db_path
 

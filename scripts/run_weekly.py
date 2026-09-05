@@ -39,6 +39,7 @@ sys.path.insert(0, str(ROOT))
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
+from synbee_bot.prefilter import drop_non_articles  # noqa: E402
 from synbee_bot.slack_dispatch import (  # noqa: E402
     make_slack_client, post_papers, post_source_alert, post_summary,
 )
@@ -225,6 +226,12 @@ def main() -> int:
                 db.mark_source_success(TOC_SOURCE)
         db.close()
         return 0
+
+    # --- shape the delta before it costs a filter call ----------------------
+    # Non-articles are dropped but deliberately NOT marked seen: if a pattern
+    # here ever fires wrongly, the paper must still be reachable next run.
+    if cfg.prefilter_non_articles:
+        new_papers = drop_non_articles(new_papers, log=_log)
 
     if cfg.llm_enabled and not args.no_llm:
         provider = cfg.weekly_llm_provider

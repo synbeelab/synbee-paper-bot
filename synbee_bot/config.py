@@ -65,6 +65,9 @@ class Config:
     slack_use_test: bool
     slack_max_posts: int | None
 
+    # Pre-LLM shaping (see prefilter.py)
+    prefilter_non_articles: bool
+
     # Weekly journal-sweep digest (delta vs daily)
     weekly_enabled: bool
     weekly_channel: str
@@ -117,6 +120,7 @@ def load_config(config_path: Path | None = None) -> Config:
     llm = cfg.get("llm_filter", {})
     slack = cfg.get("slack", {})
     storage = cfg.get("storage", {})
+    prefilter = cfg.get("prefilter", {}) or {}
     wiki = cfg.get("wiki_queue", {})
     weekly = cfg.get("weekly", {}) or {}
     weekly_llm = weekly.get("llm", {}) or {}
@@ -144,6 +148,7 @@ def load_config(config_path: Path | None = None) -> Config:
         slack_channel_test=str(slack.get("channels", {}).get("test", "")),
         slack_use_test=bool(slack.get("use_test_channel", True)),
         slack_max_posts=_optional_cap(slack.get("max_posts_per_run")),
+        prefilter_non_articles=bool(prefilter.get("non_articles", True)),
         weekly_enabled=bool(weekly.get("enabled", True)),
         weekly_channel=str(weekly.get("channel", "")),
         weekly_since_days=int(weekly.get("since_days", 7)),
