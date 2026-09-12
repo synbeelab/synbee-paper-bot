@@ -56,14 +56,6 @@ def build_paper_blocks(paper: Paper, verdict: Verdict) -> list[dict]:
             "text": {"type": "mrkdwn", "text": "\n".join(summary_lines)},
         }
 
-    abstract_block = None
-    if paper.abstract:
-        abstract_block = {
-            "type": "section",
-            "text": {"type": "mrkdwn",
-                     "text": "*Abstract*\n> " + _truncate(paper.abstract.replace("\n", " "), 600)},
-        }
-
     actions = {
         "type": "actions",
         "elements": [
@@ -83,11 +75,12 @@ def build_paper_blocks(paper: Paper, verdict: Verdict) -> list[dict]:
             "action_id": f"doi_{paper.id}",
         })
 
+    # The abstract is deliberately not rendered: it still drives the LLM
+    # verdict (filter.py), but the card reads as title + KR/EN one-liner,
+    # with the full text one click away via the buttons below.
     blocks = [title_block, meta_block, score_block]
     if summary_block:
         blocks.append(summary_block)
-    if abstract_block:
-        blocks.append(abstract_block)
     blocks.append(actions)
     blocks.append({"type": "divider"})
     return blocks
