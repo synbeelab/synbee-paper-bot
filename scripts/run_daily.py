@@ -36,7 +36,9 @@ from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.prefilter import drop_non_articles  # noqa: E402
-from synbee_bot.slack_dispatch import post_papers, post_source_alert  # noqa: E402
+from synbee_bot.slack_dispatch import (  # noqa: E402
+    make_slack_client, post_papers, post_source_alert, post_summary,
+)
 from synbee_bot.sources import collect_all  # noqa: E402
 from synbee_bot.storage import (  # noqa: E402
     SeenDB, effective_since_days, split_persist_vs_retry,
@@ -58,6 +60,42 @@ def _advance_watermarks(db: SeenDB, succeeded: set[str], *, dry_run: bool) -> No
         return
     for source in sorted(succeeded):
         db.mark_source_success(source)
+
+
+DAILY_TITLE = "🐝 SynBEE 논문 알림"
+
+
+def _post_zero_summary(cfg, args: argparse.Namespace, *,
+                       collected: int, new: int, passed: int) -> None:
+    """Post a summary-only card when there is nothing to push.
+
+    Silence is not an acceptable output: the reader cannot tell "nothing
+    qualified today" apart from "the workflow is dead". 2026-09-06 was a healthy
+    run — 20 collected, 4 new, 0 passing on a thin Sunday — and it was read as an
+    outage for a week because the channel showed exactly nothing.
+
+    The weekly bot has carried this since 2026-07-27; daily never did. Note the
+    daily version reports `new` as well as `collected`, because daily has two
+    zero paths (nothing new vs. nothing passing) and the card is what tells them
+    apart.
+    """
+    if args.dry_run or args.no_slack:
+        return
+    channel = cfg.target_channel(score=0)
+    if not (cfg.slack_enabled and cfg.slack_bot_token and channel):
+        return
+    stats = {
+        "date": dt.date.today().isoformat(),
+        "collected": collected,
+        "new": new,
+        "passed": passed,
+        "posted": 0,
+    }
+    try:
+        post_summary(make_slack_client(cfg.slack_bot_token), channel, stats,
+                     title=DAILY_TITLE)
+    except Exception as e:  # a failed report must never kill the run
+        sys.stderr.write(f"  ! zero-summary post failed: {e}\n")
 
 
 def _window(db: SeenDB, source: str, configured: int, cfg, override: int | None) -> int:
@@ -148,6 +186,7 @@ def main() -> int:
 
     if not new_papers:
         _human_log("Nothing new. Exiting.")
+        _post_zero_summary(cfg, args, collected=len(flat), new=0, passed=0)
         _advance_watermarks(db, collected.succeeded, dry_run=args.dry_run)
         db.close()
         return 0
@@ -264,6 +303,15 @@ def main() -> int:
             _human_log(f"Posted {posted} messages ({len(post_failures)} failed).")
     elif args.dry_run:
         _human_log("Dry run — Slack push skipped, DB not updated.")
+
+    # Nothing passed the filter. The digest never gets built, so without this the
+    # run ends in silence — indistinguishable from a dead workflow. Guarded on
+    # `not passing` rather than `posted == 0` so a day whose posts all FAILED
+    # still takes the post_failures path and its own alert, instead of being
+    # papered over with a cheerful "0편" card.
+    if not passing:
+        _post_zero_summary(cfg, args, collected=len(flat),
+                           new=len(new_papers), passed=0)
 
     # ----- Persist verdicts (unless dry-run) -----
     # Marking a paper seen is permanent: it is excluded from every future run. So
