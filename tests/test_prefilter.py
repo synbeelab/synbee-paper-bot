@@ -18,7 +18,7 @@ def paper(title: str) -> Paper:
                  doi=None, url="https://e.org", published="2026-08-30")
 
 
-# Titles taken verbatim from the 2026-08-30 sweep.
+# Titles taken verbatim from the 2026-08-30 sweep and the 2026-09-05 digest.
 @pytest.mark.parametrize("title", [
     "Author Correction: Specific oncogene activation of the cell of origin in mucosal melanoma",
     "Publisher Correction: Activity-dependent ribosome profiling reveals the landscape",
@@ -28,14 +28,8 @@ def paper(title: str) -> Paper:
     "Correction to: Engineering Escherichia coli Nissle 1917",
     "Correction for Sharp et al., Extreme triple oxygen isotope fractionation",
     "Retraction notice to “Advances in ultrasound-assisted synthesis”",
-    "Issue Editorial Masthead",
-    "Issue Information",
-    "Masthead",
-    "Table of Contents",
-    "Author Index",
-    "Acknowledgment of Reviewers",
-    "In Memoriam: A great enzymologist",
-    "Expression of Concern: base editing off-targets",
+    "Correction to “Potent Racemic Antimicrobial Polypeptides Uncovered by a Stereochemical Series”",
+    "Withdrawn: A CRISPRi library for Streptomyces",
 ])
 def test_non_articles_are_recognised(title):
     assert is_non_article(title)
@@ -46,31 +40,50 @@ def test_non_articles_are_recognised(title):
 @pytest.mark.parametrize("title", [
     "Error correction in DNA data storage using engineered polymerases",
     "Retraction-resistant synthetic gene circuits in Escherichia coli",
-    "Indexing the metabolome of Streptomyces coelicolor",
-    "Cover crops shape the rhizosphere microbiome",
     "A corrigendum-free workflow for reproducible proteomics",
-    "Contents of the polyketide chemical space explored by module swapping",
     "Observation of erratic non-Hermitian skin localization and transport",
-    "3D printed designer color routers with low refractive index for low-light imaging",
+    "Corrective gene editing restores enzyme activity in a metabolic disorder model",
+    "Withdrawal symptoms alter the gut microbiome composition",
 ])
 def test_real_papers_survive(title):
     assert not is_non_article(title)
 
 
-# Deliberately not dropped: these can carry a real argument about a method.
+# Out of scope by decision (2026-09-05). Front matter is a non-paper too, but it
+# is left to the NO list in filter_prompt.md; opinion pieces can carry a real
+# argument about a method. Widening prefilter to cover these is a change to
+# _LABEL — these assertions exist so that change cannot happen by accident.
 @pytest.mark.parametrize("title", [
+    "Issue Information",
+    "Issue Editorial Masthead",
+    "Table of Contents",
+    "Subscription and Copyright information",
+    "Author Index",
+    "Addendum: kinetics of the P450 cascade",
+    "Expression of Concern: base editing off-targets",
     "Editorial: the next decade of synthetic biology",
     "Comment on 'A universal biosensor scaffold'",
     "Reply to Panfoli et al.: From O2 consumption in myelin to ATP delivery",
     "Correspondence: reproducibility of directed evolution screens",
 ])
-def test_opinion_pieces_are_left_alone(title):
+def test_out_of_scope_titles_are_left_alone(title):
     assert not is_non_article(title)
 
 
 def test_empty_title_is_not_dropped():
     assert not is_non_article("")
     assert not is_non_article("   ")
+
+
+# PubMed erratum records routinely carry the ORIGINAL paper's title, so the
+# publication type is the only thing that gives them away.
+def test_pubmed_publication_types_are_authoritative():
+    innocent_title = "Engineering a glycosyltransferase for regioselective glycosylation"
+    assert not is_non_article(innocent_title)
+    assert is_non_article(innocent_title, {"Published Erratum"})
+    assert is_non_article(innocent_title, {"Journal Article", "Retraction of Publication"})
+    assert is_non_article(innocent_title, {"Retracted Publication"})
+    assert not is_non_article(innocent_title, {"Journal Article", "Review"})
 
 
 def test_drop_non_articles_keeps_the_rest_and_names_every_drop():

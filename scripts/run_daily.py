@@ -35,8 +35,8 @@ sys.path.insert(0, str(ROOT))
 from synbee_bot.abstracts import backfill_abstracts  # noqa: E402
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
-from synbee_bot.prefilter import drop_non_articles  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
+from synbee_bot.prefilter import drop_non_articles  # noqa: E402
 from synbee_bot.slack_dispatch import post_papers, post_source_alert  # noqa: E402
 from synbee_bot.sources import collect_all  # noqa: E402
 from synbee_bot.storage import (  # noqa: E402
@@ -154,12 +154,14 @@ def main() -> int:
         return 0
 
     # ----- Stage 1.5: shape the delta before it costs a filter call -----
-    # The RSS source returns entries with no abstract at all (sources.py), so
-    # the daily digest has the same title-only hole the weekly sweep does.
-    # Dropped non-articles are NOT marked seen — a wrong pattern must stay
-    # recoverable on a later run.
+    # Corrections and retraction notices can never be YES. Dropped items are
+    # NOT marked seen — a wrong pattern must stay recoverable on a later run.
     if cfg.prefilter_non_articles:
         new_papers = drop_non_articles(new_papers, log=_human_log)
+    # The RSS source returns entries with no abstract at all (sources.py), so
+    # the daily digest has the same title-only hole the weekly sweep does.
+    # Runs AFTER the prefilter: no point paying a Europe PMC lookup for an
+    # item we are about to drop.
     if cfg.abstract_backfill_enabled and new_papers:
         new_papers = backfill_abstracts(
             new_papers, timeout=cfg.abstract_backfill_timeout, log=_human_log)
