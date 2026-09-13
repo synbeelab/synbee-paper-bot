@@ -162,6 +162,9 @@ def _stub_config(rd, monkeypatch, tmp_path):
         llm_enabled = False
         llm_min_score = 6
         prefilter_non_articles = True
+        # PR #11이 들여온 키. 테스트는 네트워크를 타면 안 되므로 꺼 둔다.
+        abstract_backfill_enabled = False
+        abstract_backfill_timeout = 5
         seen_db_path = tmp_path / "seen.db"
 
         def target_channel(self, score: int) -> str:
@@ -242,3 +245,33 @@ def test_a_normal_day_posts_no_zero_card(monkeypatch, tmp_path):
 
     assert rd.main() == 0
     assert zero == [], "a day that posted papers must not also post a zero card"
+
+
+def test_zero_card_reports_the_dedup_count_not_the_post_prefilter_count(
+        monkeypatch, tmp_path):
+    """The card says "중복 제거 후 N편", so N must be the dedup count.
+
+    `drop_non_articles` reassigns `new_papers`, so reading its length at the
+    zero-card call site would quietly subtract the corrections the prefilter
+    threw away — making a normal day look like a thinner one.
+    """
+    rd = _load_run_daily()
+    Full = _stub_config(rd, monkeypatch, tmp_path)
+    Full.prefilter_non_articles = True
+
+    real = paper("p1")
+    correction = paper("p2")
+    correction = type(real)(**{**real.__dict__, "id": "p2",
+                               "title": "Author Correction: something"})
+    monkeypatch.setattr(rd, "collect_all", lambda **kw: CollectResult(
+        papers={"pubmed": [real, correction]}, failures={}, succeeded={"pubmed"}))
+
+    sent: list[dict] = []
+    monkeypatch.setattr(rd, "make_slack_client", lambda token: object())
+    monkeypatch.setattr(rd, "post_summary",
+                        lambda client, channel, stats, title="": sent.append(stats))
+    monkeypatch.setattr(sys, "argv", ["run_daily.py", "--no-llm"])
+
+    assert rd.main() == 0
+    assert len(sent) == 1
+    assert sent[0]["new"] == 2,         "the prefilter dropped one, but 2 were new after dedup"

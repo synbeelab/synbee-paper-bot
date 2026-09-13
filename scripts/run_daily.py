@@ -182,7 +182,11 @@ def main() -> int:
     # ----- Dedup against DB -----
     unseen_ids = db.filter_unseen(p.id for p in flat)
     new_papers = [p for p in flat if p.id in unseen_ids]
-    _human_log(f"Total {len(flat)} papers → {len(new_papers)} new (after dedup)")
+    # 카드가 "중복 제거 후 N편"이라고 말하므로 그 N을 여기서 붙잡아 둔다.
+    # 아래 prefilter가 new_papers를 재할당하기 때문에, zero 카드에서
+    # len(new_papers)를 쓰면 prefilter가 버린 만큼 작게 보고된다.
+    new_count = len(new_papers)
+    _human_log(f"Total {len(flat)} papers → {new_count} new (after dedup)")
 
     if not new_papers:
         _human_log("Nothing new. Exiting.")
@@ -311,7 +315,7 @@ def main() -> int:
     # papered over with a cheerful "0편" card.
     if not passing:
         _post_zero_summary(cfg, args, collected=len(flat),
-                           new=len(new_papers), passed=0)
+                           new=new_count, passed=0)
 
     # ----- Persist verdicts (unless dry-run) -----
     # Marking a paper seen is permanent: it is excluded from every future run. So
