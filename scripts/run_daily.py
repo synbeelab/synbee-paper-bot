@@ -32,6 +32,7 @@ for _stream in (sys.stdout, sys.stderr):
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from synbee_bot.abstracts import backfill_abstracts  # noqa: E402
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
@@ -200,6 +201,13 @@ def main() -> int:
     # NOT marked seen — a wrong pattern must stay recoverable on a later run.
     if cfg.prefilter_non_articles:
         new_papers = drop_non_articles(new_papers, log=_human_log)
+    # The RSS source returns entries with no abstract at all (sources.py), so
+    # the daily digest has the same title-only hole the weekly sweep does.
+    # Runs AFTER the prefilter: no point paying a Europe PMC lookup for an
+    # item we are about to drop.
+    if cfg.abstract_backfill_enabled and new_papers:
+        new_papers = backfill_abstracts(
+            new_papers, timeout=cfg.abstract_backfill_timeout, log=_human_log)
 
     # ----- Stage 2: LLM filter -----
     if cfg.llm_enabled and not args.no_llm:

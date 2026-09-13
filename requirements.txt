@@ -17,7 +17,9 @@ slack-bolt>=1.18.0
 slack-sdk>=3.27.0
 
 # LLM SDKs (필요한 것만 활성화)
-google-genai>=1.0.0                  # Gemini — Stage 2 필터 + 요약 (구 google-generativeai 후속)
+google-genai>=1.20.0                 # Gemini — Stage 2 필터 + 요약 (구 google-generativeai 후속)
+                                     # >=1.20: client.batches (Batch API 경로, gemini_batch.py).
+                                     # 2026-08-30 검증은 2.16.0에서 함.
 anthropic>=0.40.0                    # Claude — 품질 검증·sanity check 용
 # openai>=1.50.0
 
