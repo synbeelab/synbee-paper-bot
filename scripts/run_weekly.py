@@ -38,15 +38,15 @@ sys.path.insert(0, str(ROOT))
 
 from synbee_bot.abstracts import backfill_abstracts  # noqa: E402
 from synbee_bot.config import load_config  # noqa: E402
+from synbee_bot.crossref import SOURCE_NAME as TOC_SOURCE  # noqa: E402
+from synbee_bot.crossref import fetch_toc_sweep, load_toc_config  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.gemini_batch import filter_batch_offline  # noqa: E402
-from synbee_bot.prefilter import drop_non_articles  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
+from synbee_bot.prefilter import drop_non_articles  # noqa: E402
 from synbee_bot.slack_dispatch import (  # noqa: E402
     make_slack_client, post_papers, post_source_alert, post_summary,
 )
-from synbee_bot.crossref import SOURCE_NAME as TOC_SOURCE  # noqa: E402
-from synbee_bot.crossref import fetch_toc_sweep, load_toc_config  # noqa: E402
 from synbee_bot.sources import fetch_from_pubmed_weekly  # noqa: E402
 from synbee_bot.storage import (  # noqa: E402
     SeenDB, effective_since_days, split_persist_vs_retry,

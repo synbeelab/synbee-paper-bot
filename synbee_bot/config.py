@@ -125,7 +125,6 @@ def load_config(config_path: Path | None = None) -> Config:
     llm = cfg.get("llm_filter", {})
     slack = cfg.get("slack", {})
     storage = cfg.get("storage", {})
-    prefilter = cfg.get("prefilter", {}) or {}
     wiki = cfg.get("wiki_queue", {})
     weekly = cfg.get("weekly", {}) or {}
     weekly_llm = weekly.get("llm", {}) or {}
