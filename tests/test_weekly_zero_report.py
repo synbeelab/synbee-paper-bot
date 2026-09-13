@@ -142,6 +142,11 @@ def test_nothing_passing_still_persists_the_judged_rejects(tmp_path, monkeypatch
         weekly_max_posts = None
         llm_enabled = False
         prefilter_non_articles = True
+        abstract_backfill_enabled = False
+        abstract_backfill_timeout = 5
+        weekly_batch_enabled = False
+        weekly_batch_deadline_minutes = 1
+        weekly_batch_poll_seconds = 0
         max_since_days = 30
         seen_db_path = db_path
 

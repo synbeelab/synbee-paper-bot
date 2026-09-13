@@ -71,7 +71,13 @@ jobs:
     # PubMed 85 + Crossref 503 = 582편(2026-08-23 실측)이고, 전부 LLM 판정을
     # 거친다. 타임아웃으로 죽으면 watermark가 전진하지 않아 다음 주가 창을
     # 넓혀 재시도하지만, 그 주의 알림은 없었던 셈이 된다.
-    timeout-minutes: 90
+    #
+    # 90 → 240: Batch API를 쓰면 job 완료를 기다리는 시간(기본 deadline 90분)이
+    # 붙는다. deadline을 넘기면 batch를 취소하고 남은 논문을 인터랙티브로
+    # 돌리므로, 최악의 경로는 "90분 대기 + 기존 필터 시간"이다. 그 경로가
+    # 타임아웃에 잘려 죽으면 절감은커녕 주간 알림을 잃으므로 여유를 크게 둔다.
+    # public 레포라 Actions 분은 무료 — 여유를 안 둘 이유가 없다.
+    timeout-minutes: 240
 
     steps:
       - uses: actions/checkout@v4
