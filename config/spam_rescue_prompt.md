@@ -146,12 +146,29 @@ a gain.
 verify a mailbox, complete "보안 인증", confirm a payment, unlock an account,
 open an unexpected invoice, or claim a refund. Advance-fee and "business
 partnership"/"investment opportunity"/charity scams. Display-name spoofing —
-the From name says `korea.ac.kr`, "IT 지원", or a colleague, but the actual
-sender domain does not match.
+the From name says `korea.ac.kr`, "IT 지원", or a colleague, but the **address
+in the `From:` header** belongs to some other domain. Judge that on the `From:`
+address alone: `Return-Path`, `Sender`, and `smtp.mailfrom` naming a mail
+vendor is ordinary relaying, not spoofing.
 
-**When a message claims an institutional identity and `Authentication-Results`
-shows `spf=fail`, `dkim=fail`, or `dmarc=fail`, it is phishing. Never rescue
-it.**
+**Reading `Authentication-Results`.** One failed mechanism is normal on
+legitimate mail. University systems are relayed by vendors, so DKIM and SPF
+pass for *the vendor's* domain while DMARC fails on alignment with the `From:`
+domain — Korea University's own LMS does this on every message it sends
+(`dkim=pass header.i=@xinics.com`, `spf=pass`, `dmarc=fail (p=NONE)
+header.from=korea.ac.kr`). Mailing lists break SPF the same way. A lone
+`dmarc=fail`, especially with `p=NONE`, is evidence of a third-party sender,
+not of forgery, and must not by itself make a message phishing.
+
+**Only when `spf`, `dkim` and `dmarc` all fail together** does authentication
+itself convict a message claiming an institutional identity — that is what a
+spoofed sender looks like, and it is never rescued.
+
+Authentication is a *supporting* signal, never a substitute for reading the
+message. What the mail asks for decides it: a credential, payment, or
+account-unlock request is phishing whatever the headers say, and a routine
+notice from a system he actually uses is not phishing merely because DMARC
+did not align.
 
 **6. Predatory honors** — "Fellow nomination", "editorial board membership",
 awards, or academy memberships that carry a fee.
@@ -167,6 +184,7 @@ These are real messages from this mailbox and their correct verdicts:
 |---|---|
 | `student@othertuniv.ac.kr` — broken-English internship request, CV attached | **RESCUE** — category 1 |
 | `bsy1025@korea.ac.kr` — [화공 행정실] 공고 송부, spf/dkim pass | **RESCUE** — category 2 |
+| `고려대학교 LMS <elearning@korea.ac.kr>` — 조교 신청 승인 요청; `dkim=pass @xinics.com`, `spf=pass`, `dmarc=fail (p=NONE)` | **RESCUE** — 학내 시스템(2); 벤더 릴레이라 DMARC만 깨진다 |
 | `ICKSMCB2026 Secretariat` — 한국분자세포생물학회 국제학술대회 뉴스레터 | **RESCUE** — real society (5) |
 | `advopticalmat@wiley.com` — "Invitation to Review manuscript 6026340" | **RESCUE** — named manuscript (4) |
 | `cestechnical@macrogen.com` — 샘플 도착 안내 / sequencing 결과 | **RESCUE** — transactional (6) |
