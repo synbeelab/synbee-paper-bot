@@ -4,7 +4,9 @@ name: SynBEE ToC digest ping
 # routine (trigger trig_01Mok3EWKMHWhstJonwKv7Sa) at Sat 09:00 KST, using the
 # USER's Slack token. Slack never sends a push for your own message, so that
 # digest is invisible on a phone. This bot ping — a different identity — is what
-# actually reaches the phone. Same trick as schedule-ping.yml.
+# actually reaches the phone. (schedule-ping.yml used the same trick; it was
+# retired 2026-09-24 once the things it announced either stopped or started
+# posting as the bot themselves.)
 #
 # The bot must be a member of #papers-daily (/invite @SynBEE Paper Bot).
 
