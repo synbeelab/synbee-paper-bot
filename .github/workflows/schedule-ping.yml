@@ -11,12 +11,18 @@ name: SynBEE 일정 채널 ping
 # triage summary (daily) and, on Saturdays, the R&D 과제공고 digest from
 # synbeelab/rnd-search at 08:00. Firing at 08:40 covers both: the invitation
 # routine takes 35–90 s, so it has always finished by then.
+#
+# 2026-09-24: Saturdays only. The weekday ping announced nothing but the routine
+# invitation triage, whose summary is already sitting in #일정 — a daily push for
+# a queue that rarely needs a decision was pure noise. The Saturday ping stays:
+# the R&D 과제공고 digest carries deadlines, so missing it costs something.
 
 on:
   schedule:
-    - cron: "40 23 * * *"    # 08:40 KST daily (10 min after the 08:30 invitation routine)
-    # 이벤트 드롭 대비 catch-up — 늦은 핑이라도 없는 핑보다 낫다.
-    - cron: "53 1 * * *"     # 10:53 KST
+    # 토요일 08:40 KST — UTC로는 금요일 23:40이다 (+9h).
+    - cron: "40 23 * * 5"
+    # 이벤트 드롭 대비 catch-up — 늦은 핑이라도 없는 핑보다 낫다. 토요일 10:53 KST.
+    - cron: "53 1 * * 6"
   workflow_dispatch:
 
 permissions:
@@ -73,8 +79,8 @@ jobs:
           tok = os.environ["SLACK_BOT_TOKEN"]
           if not tok:
               raise SystemExit("SLACK_BOT_TOKEN missing")
-          # Saturday also carries the weekly R&D 과제공고 digest, which has
-          # deadlines attached — name it so the push says what is actually there.
+          # 스케줄상 토요일에만 돈다. 평일에 뜨는 건 workflow_dispatch 뿐이므로,
+          # 그때는 (일부러 돌린 것이니) 초청 처리 문구를 그대로 내보낸다.
           is_saturday = datetime.datetime.now().weekday() == 5
           text = (":test_tube: 이번 주 R&D 과제공고 서베이 + 학술지 초청 처리 결과가 "
                   "#일정에 올라왔어요 — 공고는 마감이 있으니 확인하세요!"
