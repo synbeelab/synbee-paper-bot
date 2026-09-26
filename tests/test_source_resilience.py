@@ -52,9 +52,15 @@ class FakeResponse(io.BytesIO):
         return False
 
 
-def page(count: int, dois: list[str]) -> bytes:
+def page(count: int, dois: list[str], total: int | None = None) -> bytes:
+    """A page as api.biorxiv.org serves it.
+
+    `total` is the interval's full count, which the server reports as a string
+    and pagination now follows instead of assuming a page size.
+    """
     return json.dumps({
-        "messages": [{"count": count}],
+        "messages": [{"count": count,
+                      "total": str(total if total is not None else len(dois))}],
         "collection": [
             {"doi": d, "title": f"T-{d}", "abstract": "synthetic biology abstract",
              "authors": "Kim A; Lee B", "date": "2026-08-14", "version": 1}
@@ -124,7 +130,7 @@ def test_http_error_raises_instead_of_truncating(monkeypatch):
     the unread pages vanished. Fail loudly and let the next run refetch."""
     err = urllib.error.HTTPError("u", 503, "Service Unavailable", {}, None)
     monkeypatch.setattr(sources.urllib.request, "urlopen",
-                        fake_urlopen(page(100, [f"10.1101/{i}" for i in range(100)]), err))
+                        fake_urlopen(page(100, [f"10.1101/{i}" for i in range(100)], total=250), err))
 
     with pytest.raises(SourceFetchError):
         biorxiv_recent("biorxiv", since_days=1)
@@ -374,3 +380,61 @@ def test_a_failed_source_keeps_its_old_watermark(tmp_path):
     assert db.get_source_watermark("biorxiv") == dt.date(2026, 8, 13)
     assert effective_since_days(1, db.get_source_watermark("biorxiv"), today=TODAY) == 3
     db.close()
+
+
+# --- a multi-day outage must read as one, not as N identical surprises ------
+
+def test_alert_says_how_long_the_source_has_been_down():
+    """Three days of bioRxiv downtime produced three byte-identical alerts, so
+    the reader could not tell a fresh blip from an outage entering its third
+    day — and the one number that matters (how much window is left before
+    MAX_SINCE_DAYS starts dropping papers) was nowhere in the message."""
+    blocks = build_source_alert_blocks(
+        {"biorxiv": "empty response body (HTTP 200)"},
+        "2026-09-26",
+        last_success={"biorxiv": dt.date(2026, 9, 23)},
+        today=dt.date(2026, 9, 26))
+
+    text = blocks[0]["text"]["text"]
+    assert "3" in text, "the streak length has to be visible"
+    assert "2026-09-23" in text, "so does the last date we actually collected"
+
+
+def test_alert_without_watermark_history_still_posts():
+    """A source failing on its very first run has no watermark. That must read
+    as an ordinary alert, not crash the one message announcing the outage."""
+    blocks = build_source_alert_blocks(
+        {"rss": "feedparser not installed"}, "2026-09-26",
+        last_success={"rss": None}, today=dt.date(2026, 9, 26))
+
+    assert "rss" in blocks[0]["text"]["text"]
+
+
+def test_alert_keeps_working_without_the_new_argument():
+    """Called the old way by any caller not yet updated."""
+    blocks = build_source_alert_blocks({"biorxiv": "down"}, "2026-09-26")
+
+    assert "biorxiv" in blocks[0]["text"]["text"]
+
+
+def test_a_first_day_failure_is_not_dressed_up_as_a_streak():
+    blocks = build_source_alert_blocks(
+        {"biorxiv": "down"}, "2026-09-26",
+        last_success={"biorxiv": dt.date(2026, 9, 25)},
+        today=dt.date(2026, 9, 26))
+
+    text = blocks[0]["text"]["text"]
+    assert "연속" not in text, "one missed day is a blip, not a streak"
+
+
+def test_streak_alert_still_fits_a_slack_section():
+    """The streak note adds characters to every line, and the 3000-char budget
+    was already tight enough to need truncation."""
+    blocks = build_source_alert_blocks(
+        {f"src{i}": "x" * 4000 for i in range(4)}, "2026-09-26",
+        last_success={f"src{i}": dt.date(2026, 9, 1) for i in range(4)},
+        today=dt.date(2026, 9, 26))
+
+    for block in blocks:
+        if block["type"] == "section":
+            assert len(block["text"]["text"]) <= 3000

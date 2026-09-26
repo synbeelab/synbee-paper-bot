@@ -288,19 +288,54 @@ def _fetch_json(url: str, *, timeout: int = 30, attempts: int = 3,
     raise SourceFetchError(f"{url}: {last_error}")
 
 
-def biorxiv_recent(server: str, since_days: int, max_pages: int = 20) -> list[Paper]:
+def _reported_total(data: dict) -> int | None:
+    """The interval's paper count as the server reports it, if it does.
+
+    bioRxiv sends it as a string (``"total": "338"``), and older payloads omit
+    it entirely, so anything unparseable means "the server did not say".
+    """
+    messages = data.get("messages") or [{}]
+    try:
+        return int(messages[0].get("total"))
+    except (TypeError, ValueError, IndexError, KeyError, AttributeError):
+        return None
+
+
+#: Page budget, sized against the worst case rather than the usual one. A
+#: watermark that has fallen MAX_SINCE_DAYS behind asks for a month of
+#: preprints — over 4,000 of them — and at 30 per page that is well past a
+#: hundred requests. Running out of pages mid-window is treated as a failure,
+#: not as the end of the results, so this only has to be generous enough that
+#: the guard never fires on a real window.
+BIORXIV_MAX_PAGES = 300
+EUROPEPMC_MAX_PAGES = 200
+
+
+def biorxiv_recent(server: str, since_days: int,
+                   max_pages: int = BIORXIV_MAX_PAGES) -> list[Paper]:
     """Fetch all bioRxiv/medRxiv papers in date range, paginated.
 
     Raises SourceFetchError if any page cannot be read. Returning the pages
     collected so far would silently drop everything on the pages behind the
     failure.
+
+    Pagination follows what the server actually served. The page size is the
+    server's to choose and it has changed — the API documentation says 30 per
+    call where this code once assumed 100 — and `count < 100 → last page` turns
+    such a change into a silent truncation at the first page: the run keeps the
+    window's first 30 preprints, discards the rest, and looks entirely normal
+    doing it.
     """
     end = dt.date.today()
     start = end - dt.timedelta(days=since_days)
     interval = f"{start.isoformat()}/{end.isoformat()}"
 
+    if max_pages <= 0:
+        raise SourceFetchError(f"{server}: no page budget to fetch with")
+
     out: list[Paper] = []
     cursor = 0
+    page_size = 0
     for _ in range(max_pages):
         url = f"https://api.biorxiv.org/details/{server}/{interval}/{cursor}/json"
         try:
@@ -308,14 +343,43 @@ def biorxiv_recent(server: str, since_days: int, max_pages: int = 20) -> list[Pa
         except SourceFetchError as e:
             raise SourceFetchError(
                 f"{server} unreachable at cursor {cursor}: {e}") from e
-        for item in data.get("collection", []):
+        items = data.get("collection") or []
+        for item in items:
             paper = _parse_biorxiv_item(item, server)
             if paper:
                 out.append(paper)
-        if data.get("messages", [{}])[0].get("count", 0) < 100:
+        if not items:
+            # An empty page is only the end when the server agrees the window
+            # is finished. Paginating `/pubs/` end to end on 2026-09-26 (the
+            # sibling endpoint that survived the outage, sharing this
+            # pagination) returned exactly `total` items with no empty page
+            # before it, so `total` is exact and a short stop is a fault, not a
+            # quiet day. Treating it as the end is how a half-served window
+            # becomes a digest that looks complete.
+            total = _reported_total(data)
+            if total is not None and cursor < total:
+                raise SourceFetchError(
+                    f"{server}: empty page at cursor {cursor} of {total} — "
+                    "the server stopped serving a window it says has more")
             break
-        cursor += 100
+        cursor += len(items)
+        total = _reported_total(data)
+        if total is not None:
+            if cursor >= total:
+                break
+        elif page_size and len(items) < page_size:
+            # No total to go by: a page shorter than the first one is the last.
+            break
+        page_size = page_size or len(items)
         time.sleep(0.4)
+    else:
+        # Fell out of the loop with pages still to read. Returning what we have
+        # is the silent truncation this function exists to prevent.
+        total = _reported_total(data)
+        if total is None or cursor < total:
+            raise SourceFetchError(
+                f"{server}: ran out of pages at cursor {cursor} of "
+                f"{total if total is not None else 'unknown'} — window too wide")
     return out
 
 
@@ -342,6 +406,133 @@ def _parse_biorxiv_item(item: dict, server: str) -> Paper | None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Europe PMC — the stand-in for a dead api.biorxiv.org
+#
+# 2026-09-24 → 2026-09-26: the `/details/` endpoint answered HTTP 200 with a
+# zero-length body for every server, interval, DOI, cursor and format —
+# including bioRxiv's own documented example URLs. `format=html` came back
+# truncated mid-document with no <body>, i.e. a PHP fatal error during render,
+# so with `format=json` nothing had been flushed before the crash. Sibling
+# endpoints on the same host (`/pubs/`, `/sum/`) kept working, so the host was
+# up and one endpoint was broken — nothing a retry or a different window could
+# route around.
+#
+# `collect_all` isolation kept the other sources alive and the watermark held
+# the window open, but bioRxiv returned nothing for as long as the endpoint
+# stayed down, and that window is capped at MAX_SINCE_DAYS. Europe PMC indexes
+# the same preprints with full abstracts, so it stands in rather than letting a
+# long outage run the window out.
+# ---------------------------------------------------------------------------
+EUROPEPMC_SEARCH = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+
+#: Europe PMC's FIRST_PDATE is its own stamp, not bioRxiv's posting date, and
+#: the two are much further apart than they look. Measured over 2,254 bioRxiv
+#: preprints with FIRST_PDATE in 2026-09-05..09-20, against the posting date
+#: bioRxiv encodes in the DOI (``10.64898/YYYY.MM.DD.NNNNNN``): median 4 days,
+#: only 78% within 5, 99.6% within 7, with a tail reaching 14.
+#:
+#: So the fallback must reach back well past the native window it stands in
+#: for. A preprint that has not been indexed by the time its window passes is
+#: not late, it is lost — no later run looks there again. Three weeks clears
+#: the entire observed distribution. The overlap costs pages and nothing else:
+#: seen.db dedups before the LLM stage, and this path only runs at all while
+#: the native API is down.
+EUROPEPMC_LAG_DAYS = 21
+
+_EUROPEPMC_PUBLISHER = {"biorxiv": "bioRxiv", "medrxiv": "medRxiv"}
+
+
+def _parse_europepmc_item(item: dict, server: str) -> Paper | None:
+    doi = (item.get("doi") or "").strip()
+    if not doi:
+        return None
+    authors = [a.get("fullName", "").strip()
+               for a in ((item.get("authorList") or {}).get("author") or [])
+               if (a.get("fullName") or "").strip()]
+    if not authors:
+        authors = [a.strip() for a in (item.get("authorString") or "").rstrip(".").split(",")
+                   if a.strip()]
+    published = (item.get("firstPublicationDate") or "").strip()
+    try:
+        year = int(item.get("pubYear"))
+    except (TypeError, ValueError):
+        year = int(published[:4]) if published[:4].isdigit() else None
+    # Europe PMC does not carry the preprint's version number, and a hardcoded
+    # `v1` would point readers at a superseded draft. The DOI always resolves
+    # to the current version.
+    return Paper(
+        id=f"{server}:{doi}", source=server,
+        title=(item.get("title") or "").strip(),
+        authors=authors,
+        journal=server, year=year,
+        abstract=(item.get("abstractText") or "").strip(),
+        doi=doi, url=f"https://doi.org/{doi}",
+        published=published or None,
+    )
+
+
+def europepmc_preprints(server: str, since_days: int, *, page_size: int = 100,
+                        max_pages: int = EUROPEPMC_MAX_PAGES) -> list[Paper]:
+    """Fetch a server's preprints from Europe PMC, paginated by cursorMark.
+
+    Raises SourceFetchError if any page cannot be read, for the same reason
+    `biorxiv_recent` does: a short list is indistinguishable from a quiet week.
+    """
+    publisher = _EUROPEPMC_PUBLISHER.get(server, server)
+    end = dt.date.today()
+    start = end - dt.timedelta(days=since_days + EUROPEPMC_LAG_DAYS)
+    query = (f'(SRC:"PPR") AND (PUBLISHER:"{publisher}") AND '
+             f'(FIRST_PDATE:[{start.isoformat()} TO {end.isoformat()}])')
+
+    if max_pages <= 0:
+        raise SourceFetchError(f"Europe PMC {server}: no page budget to fetch with")
+
+    out: list[Paper] = []
+    fetched = 0
+    cursor = "*"
+    used: set[str] = set()
+    for _ in range(max_pages):
+        if cursor in used:
+            # Europe PMC repeats the cursor instead of clearing it on the last
+            # page; without this the loop would refetch it until max_pages.
+            break
+        used.add(cursor)
+        url = EUROPEPMC_SEARCH + "?" + urllib.parse.urlencode({
+            "query": query, "format": "json", "resultType": "core",
+            "pageSize": page_size, "cursorMark": cursor,
+        })
+        data = _fetch_json(url)
+        results = (data.get("resultList") or {}).get("result") or []
+        fetched += len(results)
+        for item in results:
+            paper = _parse_europepmc_item(item, server)
+            if paper:
+                out.append(paper)
+        if not results:
+            # Same rule as the native path: stopping short of the hit count the
+            # search itself reported is a fault, not the end of the window.
+            # `fetched` counts what the server sent, not what parsed, so a
+            # record we skip cannot masquerade as a missing one.
+            try:
+                hits = int(data.get("hitCount"))
+            except (TypeError, ValueError):
+                hits = None
+            if hits is not None and fetched < hits:
+                raise SourceFetchError(
+                    f"Europe PMC {server}: empty page at {fetched} of {hits}")
+            break
+        cursor = (data.get("nextCursorMark") or "").strip()
+        if not cursor:
+            break
+        time.sleep(0.2)
+    else:
+        raise SourceFetchError(
+            f"Europe PMC {server}: ran out of pages at {len(out)} of "
+            f"{data.get('hitCount', 'unknown')} — window too wide")
+    return out
+
+
 def filter_biorxiv_by_keywords(papers: list[Paper], keywords: Iterable[str]) -> list[Paper]:
     """Client-side keyword filter — bioRxiv API doesn't support boolean queries."""
     pats = [re.compile(re.escape(k), re.I) for k in keywords]
@@ -356,7 +547,20 @@ def filter_biorxiv_by_keywords(papers: list[Paper], keywords: Iterable[str]) -> 
 def fetch_from_biorxiv(since_days: int) -> list[Paper]:
     keywords_yaml = _load_yaml(ROOT / "config" / "keywords.yml")
     keywords = collect_keywords(keywords_yaml, include_aux=False)
-    raw = biorxiv_recent("biorxiv", since_days)
+    try:
+        raw = biorxiv_recent("biorxiv", since_days)
+    except SourceFetchError as primary:
+        # Europe PMC lags bioRxiv by a day or two, so it is a stand-in and not
+        # a replacement: only reach for it once the native API has given up.
+        sys.stderr.write(f"  ! bioRxiv API unusable ({primary})\n"
+                         "    falling back to Europe PMC for this window\n")
+        try:
+            raw = europepmc_preprints("biorxiv", since_days)
+        except SourceFetchError as backup:
+            raise SourceFetchError(
+                f"bioRxiv API: {primary} || Europe PMC fallback: {backup}"
+            ) from primary
+        sys.stderr.write(f"  ↪ Europe PMC served {len(raw)} preprints\n")
     return filter_biorxiv_by_keywords(raw, keywords["mission"])
 
 

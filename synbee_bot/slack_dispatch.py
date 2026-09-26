@@ -1,6 +1,7 @@
 """Slack Block Kit message builder + dispatcher."""
 from __future__ import annotations
 
+import datetime as dt
 import sys
 from typing import Iterable
 
@@ -117,12 +118,35 @@ def build_summary_blocks(stats: dict, title: str = "🐝 SynBEE 논문 알림") 
 SLACK_SECTION_LIMIT = 3000
 
 
-def build_source_alert_blocks(failures: dict[str, str], date: str) -> list[dict]:
+def _streak_note(last_success: dt.date | None, today: dt.date) -> str:
+    """How long this source has been down, when that is worth saying.
+
+    A multi-day outage used to post a byte-identical alert every morning, so
+    the reader could not tell a fresh blip from one entering its third day —
+    and the number that actually matters, how much of the MAX_SINCE_DAYS
+    recovery window is left before preprints start being dropped outright, was
+    nowhere in the message.
+    """
+    if last_success is None:
+        return ""
+    days = (today - last_success).days
+    if days < 2:  # one missed day is a blip, not a streak
+        return ""
+    return f" ({days}일째 연속 실패, 마지막 정상 수집 {last_success.isoformat()})"
+
+
+def build_source_alert_blocks(failures: dict[str, str], date: str,
+                              last_success: dict[str, dt.date | None] | None = None,
+                              today: dt.date | None = None) -> list[dict]:
     """Warning for sources that could not be collected.
 
     A dead source makes for a digest that looks perfectly normal and is quietly
     incomplete — and on a day when nothing passes the filter, there is no digest
     at all to attach the warning to. So this goes out as its own message.
+
+    `last_success` is each failed source's watermark, which is already the
+    record of when it last delivered; passing it turns a repeated alert into a
+    legible streak. Omitting it keeps the old single-day wording.
 
     Reasons are budgeted to fit Slack's 3000-character section limit. Fetch
     errors carry full URLs and several sources can fail at once; an oversized
@@ -134,10 +158,16 @@ def build_source_alert_blocks(failures: dict[str, str], date: str) -> list[dict]
               "해당 소스의 수집 기준일은 전진하지 않으므로, 다음 런이 빠진 기간을 다시 훑습니다._")
 
     items = sorted(failures.items())
+    today = today or dt.date.today()
+    watermarks = last_success or {}
+    prefixes = {name: f"• *{name}*{_streak_note(watermarks.get(name), today)} — "
+                for name, _ in items}
+
     budget = SLACK_SECTION_LIMIT - len(header) - len(footer)
-    # Per line: "• *name* — reason\n". Keep a floor so every source stays named.
-    per_reason = max(60, budget // max(1, len(items)) - len("• *) — \n") - 24)
-    detail = "\n".join(f"• *{name}* — {_truncate(reason, per_reason)}"
+    overhead = sum(len(p) + 1 for p in prefixes.values())  # +1 for the newline
+    # Keep a floor so every source stays named even when reasons are enormous.
+    per_reason = max(60, (budget - overhead) // max(1, len(items)))
+    detail = "\n".join(f"{prefixes[name]}{_truncate(reason, per_reason)}"
                        for name, reason in items)
 
     text = header + detail + footer
@@ -150,7 +180,8 @@ def build_source_alert_blocks(failures: dict[str, str], date: str) -> list[dict]
 
 
 def post_source_alert(token: str, channel: str, failures: dict[str, str],
-                      date: str) -> bool:
+                      date: str,
+                      last_success: dict[str, dt.date | None] | None = None) -> bool:
     """Announce failed sources. Returns True if the alert reached Slack."""
     if not failures:
         return False
@@ -158,7 +189,7 @@ def post_source_alert(token: str, channel: str, failures: dict[str, str],
         client = make_slack_client(token)
         client.chat_postMessage(
             channel=channel,
-            blocks=build_source_alert_blocks(failures, date),
+            blocks=build_source_alert_blocks(failures, date, last_success),
             text=f"논문 수집 실패: {', '.join(sorted(failures))}",
         )
         return True
