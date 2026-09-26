@@ -167,8 +167,13 @@ def main() -> int:
         # nothing passes the filter there is no digest to carry the warning.
         alert_channel = cfg.target_channel(score=0)
         if alert_channel:
+            # The watermark already records when each source last delivered, so
+            # a three-day outage reads as one streak instead of three identical
+            # morning alarms.
             post_source_alert(cfg.slack_bot_token, alert_channel,
-                              collected.failures, dt.date.today().isoformat())
+                              collected.failures, dt.date.today().isoformat(),
+                              {name: db.get_source_watermark(name)
+                               for name in collected.failures})
     if collected.failures and not collected.succeeded:
         _human_log("❌ Every source failed. Nothing to do; window stays open for the next run.")
         db.close()
