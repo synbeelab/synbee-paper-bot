@@ -40,6 +40,7 @@ from synbee_bot.abstracts import backfill_abstracts  # noqa: E402
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.crossref import SOURCE_NAME as TOC_SOURCE  # noqa: E402
 from synbee_bot.crossref import fetch_toc_sweep, load_toc_config  # noqa: E402
+from synbee_bot.dedup import drop_known_dois, drop_known_titles, merge_by_doi  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.gemini_batch import filter_batch_offline  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
@@ -188,20 +189,10 @@ def main() -> int:
 
     # Merge. PubMed records win over Crossref for the same DOI: they carry a real
     # abstract, which the LLM filter judges far better than a bare title.
-    by_id: dict[str, Paper] = {}
-    for p in flat + toc_papers:
-        by_id.setdefault(p.id, p)
-    merged: list[Paper] = []
-    run_dois: set[str] = set()
-    for p in sorted(by_id.values(), key=lambda x: x.source == TOC_SOURCE):
-        doi = (p.doi or "").lower()
-        if doi and doi in run_dois:
-            continue
-        if doi:
-            run_dois.add(doi)
-        merged.append(p)
-    if len(by_id) != len(merged):
-        _log(f"  cross-source DOI dedup within run: -{len(by_id) - len(merged)}")
+    unique_ids = len({p.id for p in flat + toc_papers})
+    merged = merge_by_doi(flat + toc_papers, rank=lambda x: x.source == TOC_SOURCE)
+    if unique_ids != len(merged):
+        _log(f"  cross-source DOI dedup within run: -{unique_ids - len(merged)}")
     flat = merged
 
     unseen_ids = db.filter_unseen(p.id for p in flat)
@@ -211,9 +202,12 @@ def main() -> int:
     known_dois = db.seen_dois(p.doi for p in new_papers if p.doi)
     if known_dois:
         before = len(new_papers)
-        new_papers = [p for p in new_papers
-                      if not (p.doi and p.doi.lower() in known_dois)]
+        new_papers = drop_known_dois(new_papers, known_dois)
         _log(f"  DOI-level dedup vs seen.db: -{before - len(new_papers)}")
+    before = len(new_papers)
+    new_papers = drop_known_titles(new_papers, db.title_index())
+    if len(new_papers) != before:
+        _log(f"  title-level dedup vs seen.db (DOI-less records): -{before - len(new_papers)}")
     _log(f"Total {len(flat)} → {len(new_papers)} new after dedup vs daily seen.db")
 
     if not new_papers:

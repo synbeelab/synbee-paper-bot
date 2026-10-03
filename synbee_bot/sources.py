@@ -42,6 +42,21 @@ class SourceFetchError(RuntimeError):
     """
 
 
+class PartialSourceError(SourceFetchError):
+    """Some of a source's sub-feeds failed, but the rest delivered.
+
+    Carries the papers that *did* arrive. Throwing them away with the broken
+    feed is what a plain SourceFetchError would do — and RSS feeds keep only
+    their latest entries, so papers dropped today may have rolled off the feed
+    before the next run looks again. The source still counts as failed (alert,
+    watermark held), so the window widens until every feed is healthy.
+    """
+
+    def __init__(self, message: str, papers: list[Paper]):
+        super().__init__(message)
+        self.papers = papers
+
+
 # ---------------------------------------------------------------------------
 # PubMed
 # ---------------------------------------------------------------------------
@@ -581,12 +596,20 @@ def fetch_from_rss(since_days: int) -> list[Paper]:
     broken: list[str] = []
     for feed in feeds:
         try:
-            parsed = feedparser.parse(feed["url"])
+            parsed = feedparser.parse(_download_feed(feed["url"]))
         except Exception as e:
             # Skipping the feed keeps the other feeds flowing, but the run must
             # still be told, or this feed's papers vanish one day at a time.
             sys.stderr.write(f"  RSS error {feed['name']}: {e}\n")
             broken.append(f"{feed.get('name', feed.get('url', '?'))}: {e}")
+            continue
+        problem = _dead_feed_reason(parsed)
+        if problem:
+            # feedparser does not raise on HTTP errors: a 403 HTML page parses
+            # as a feed with zero entries, which reads as "nothing published".
+            # Metabolic Engineering's old ScienceDirect URL did exactly that.
+            sys.stderr.write(f"  RSS dead feed {feed['name']}: {problem}\n")
+            broken.append(f"{feed.get('name', feed.get('url', '?'))}: {problem}")
             continue
         for entry in parsed.entries:
             pub = entry.get("published_parsed") or entry.get("updated_parsed")
@@ -607,12 +630,62 @@ def fetch_from_rss(since_days: int) -> list[Paper]:
                 journal=feed.get("name", ""),
                 year=pub_dt.year if pub_dt else None,
                 abstract=entry.get("summary", "") or entry.get("description", ""),
-                doi=None, url=link,
+                doi=_rss_entry_doi(entry), url=link,
                 published=pub_dt.isoformat() if pub_dt else None,
             ))
     if broken:
-        raise SourceFetchError("; ".join(broken))
+        raise PartialSourceError("; ".join(broken), out)
     return out
+
+
+_FEED_UA = "synbee-paper-bot/1.0 (+https://github.com/synbeelab/synbee-paper-bot)"
+
+
+def _download_feed(url: str, *, timeout: int = 30) -> bytes:
+    """Fetch a feed body through a cookie-keeping session.
+
+    nature.com intermittently bounces feed requests through an idp.nature.com
+    cookie handshake (303 → 302 → 302 → feed). feedparser's own fetcher drops
+    the cookie and ends on an HTML page that parses as a zero-entry feed, so the
+    four Nature-journal feeds silently delivered nothing on those days.
+    """
+    import requests
+
+    with requests.Session() as session:
+        response = session.get(url, timeout=timeout, headers={"User-Agent": _FEED_UA})
+    response.raise_for_status()
+    return response.content
+
+
+_DOI_RE = re.compile(r"10\.\d{4,9}/[^\s?#]+")
+
+
+def _rss_entry_doi(entry) -> str | None:
+    """The entry's DOI, so cross-source dedup can see the paper behind the URL.
+
+    Without it the same bioRxiv preprint arrived as `biorxiv:<doi>` from the API
+    and as `rss:<link>` from the subject feed, and was posted twice (HERO,
+    PRIME, … on 2026-09-29 – 10-03). Nature/Science put it in `prism:doi`,
+    bioRxiv and Cell in `dc:identifier` (with or without a `doi:` prefix).
+    """
+    for key in ("prism_doi", "dc_identifier"):
+        value = entry.get(key)
+        if value:
+            m = _DOI_RE.search(str(value))
+            if m:
+                return m.group(0).lower()
+    return None
+
+
+def _dead_feed_reason(parsed) -> str | None:
+    """Why a parsed feed should be treated as broken, or None if it is fine.
+
+    HTTP errors are raised by _download_feed; this catches the 200-with-HTML
+    case (an error or login page that parses as a zero-entry feed).
+    """
+    if not parsed.entries and parsed.get("bozo"):
+        return f"unparseable feed ({parsed.get('bozo_exception')})"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -659,6 +732,11 @@ def collect_all(since_days_pubmed: int, since_days_biorxiv: int, since_days_rss:
         try:
             papers[name] = fetch()
             succeeded.add(name)
+        except PartialSourceError as e:
+            # Keep what arrived; still a failure for alerting and watermarks.
+            papers[name] = e.papers
+            failures[name] = f"{type(e).__name__}: {e}"
+            sys.stderr.write(f"  ✗ source '{name}' partially failed: {failures[name]}\n")
         except Exception as e:
             failures[name] = f"{type(e).__name__}: {e}"
             sys.stderr.write(f"  ✗ source '{name}' failed: {failures[name]}\n")

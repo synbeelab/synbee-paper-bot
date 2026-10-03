@@ -1,0 +1,74 @@
+name: Pipeline watchdog
+
+# 매일 한 번, catch-up 창이 끝난 뒤 "결과"를 점검한다(exit code가 아니라).
+# 과거 장애는 전부 워크플로가 초록불인 채로 논문이 빠진 경우였다 — 상세는
+# synbee_bot/watchdog.py 독스트링. 안전한 것만 자동 복구(무활동 비활성화 해제,
+# 오늘 배달 누락·오늘 실패한 소스의 재실행 dispatch)하고 나머지는 보고한다.
+# 이상이 없으면 Slack에 아무것도 올리지 않는다(Actions 요약에만 남김).
+on:
+  schedule:
+    # 16:17 KST 예약 → 실제 도착은 대개 17~21시(스케줄 지연). daily의 마지막
+    # catch-up(13:23 KST)과 토요일 weekly(09:30 KST 예약, 실제 ~14:30) 이후.
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report only (no repair, no Slack)"
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+  actions: write     # 워크플로 재활성화 + workflow_dispatch
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: synbee-watchdog
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 읽기 전용 — 저장하지 않는다. watchdog이 seen.db를 바꾸면 안 된다.
+      - name: Restore seen.db cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/seen.db
+          key: synbee-seen-watchdog-${{ github.run_id }}
+          restore-keys: |
+            synbee-seen-
+
+      - name: Run watchdog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          WATCHDOG_CHANNEL: "C0B2QJ179K6"   # #papers-daily
+          WATCHDOG_DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+          PYTHONIOENCODING: "utf-8"
+        run: python scripts/run_watchdog.py
+
+  # 이 워크플로도 스케줄이므로 60일 무활동 자동 비활성화 대상이다.
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: liskin/gh-workflow-keepalive@v1
