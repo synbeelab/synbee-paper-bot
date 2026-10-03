@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT))
 
 from synbee_bot.abstracts import backfill_abstracts  # noqa: E402
 from synbee_bot.config import load_config  # noqa: E402
+from synbee_bot.dedup import drop_known_dois, drop_known_titles, merge_by_doi  # noqa: E402
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.prefilter import drop_non_articles  # noqa: E402
@@ -44,6 +45,11 @@ from synbee_bot.sources import collect_all  # noqa: E402
 from synbee_bot.storage import (  # noqa: E402
     SeenDB, effective_since_days, split_persist_vs_retry,
 )
+
+
+#: Which copy survives a DOI merge — lower wins (PubMed and the bioRxiv API carry
+#: full abstracts; an RSS summary is often a teaser or empty).
+_SOURCE_RANK = {"pubmed": 0, "biorxiv": 1, "rss": 2}
 
 
 def _human_log(msg: str) -> None:
@@ -174,20 +180,34 @@ def main() -> int:
                               collected.failures, dt.date.today().isoformat(),
                               {name: db.get_source_watermark(name)
                                for name in collected.failures})
-    if collected.failures and not collected.succeeded:
+    # A partially failed source (one dead RSS feed) is not "succeeded" but did
+    # deliver papers; only stop when nothing at all came back.
+    if collected.failures and not collected.succeeded and not flat:
         _human_log("❌ Every source failed. Nothing to do; window stays open for the next run.")
         db.close()
         return 1
 
-    # Dedup within run (same DOI/PMID may appear in multiple sources)
-    by_id: dict[str, Paper] = {}
-    for p in flat:
-        by_id.setdefault(p.id, p)
-    flat = list(by_id.values())
+    # Dedup within run. The same preprint arrives as `biorxiv:<doi>` and as
+    # `rss:<link>`, so id alone is not enough — merge on DOI too, keeping the
+    # copy with the best abstract (PubMed, then the bioRxiv API, then RSS).
+    before = len(flat)
+    flat = merge_by_doi(flat, rank=lambda p: _SOURCE_RANK.get(p.source, len(_SOURCE_RANK)))
+    if len(flat) != before:
+        _human_log(f"  cross-source dedup within run: -{before - len(flat)}")
 
     # ----- Dedup against DB -----
     unseen_ids = db.filter_unseen(p.id for p in flat)
     new_papers = [p for p in flat if p.id in unseen_ids]
+    # …and a paper already delivered under another id must not come back.
+    known_dois = db.seen_dois(p.doi for p in new_papers if p.doi)
+    if known_dois:
+        before = len(new_papers)
+        new_papers = drop_known_dois(new_papers, known_dois)
+        _human_log(f"  DOI-level dedup vs seen.db: -{before - len(new_papers)}")
+    before = len(new_papers)
+    new_papers = drop_known_titles(new_papers, db.title_index())
+    if len(new_papers) != before:
+        _human_log(f"  title-level dedup vs seen.db (DOI-less records): -{before - len(new_papers)}")
     # 카드가 "중복 제거 후 N편"이라고 말하므로 그 N을 여기서 붙잡아 둔다.
     # 아래 prefilter가 new_papers를 재할당하기 때문에, zero 카드에서
     # len(new_papers)를 쓰면 prefilter가 버린 만큼 작게 보고된다.

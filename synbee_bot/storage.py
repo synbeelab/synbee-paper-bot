@@ -110,6 +110,22 @@ class SeenDB:
             out |= {r["d"] for r in rows if r["d"]}
         return out
 
+    def title_index(self) -> dict[str, set[str]]:
+        """title_key → DOI kinds ("none"/"journal"/"preprint") of seen records.
+
+        Backs title-level dedup for routes that carry no DOI (ScienceDirect
+        RSS); see synbee_bot.dedup.titles_may_match. Built in Python because the
+        key normalization is not SQL-able; the table is tens of thousands of rows.
+        """
+        from .dedup import doi_kind, title_key
+
+        index: dict[str, set[str]] = {}
+        for row in self.conn.execute("SELECT title, doi FROM seen"):
+            key = title_key(row["title"])
+            if key:
+                index.setdefault(key, set()).add(doi_kind(row["doi"]))
+        return index
+
     def mark_seen(self, paper: Paper, verdict: Verdict | None = None) -> None:
         self.conn.execute(
             """INSERT OR REPLACE INTO seen
