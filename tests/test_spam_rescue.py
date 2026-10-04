@@ -9,7 +9,9 @@ import pytest
 
 from synbee_bot.spam_rescue.classify import Judgment, parse_judgment, render_prompt
 from synbee_bot.spam_rescue.gmail import GmailMessage, _extract_body, _strip_html
-from synbee_bot.spam_rescue.rescue import Action, decide, fails_all_authentication
+from synbee_bot.spam_rescue.rescue import (
+    Action, decide, fails_all_authentication, never_rescue_match,
+)
 
 
 def make_message(*, sender: str = "student@snu.ac.kr",
@@ -185,3 +187,47 @@ def test_extract_body_falls_back_to_html():
         }],
     }
     assert _extract_body(payload) == "only html"
+
+
+# --- never-rescue list -----------------------------------------------------
+@pytest.mark.parametrize("sender", [
+    '"인권·성평등센터" <humanrights@korea.ac.kr>',
+    "HumanRights@Korea.ac.kr",
+])
+def test_never_rescue_matches_listed_address(sender):
+    hit = never_rescue_match(make_message(sender=sender),
+                             senders=("humanrights@korea.ac.kr",), keywords=())
+    assert hit == "humanrights@korea.ac.kr"
+
+
+def test_never_rescue_does_not_spill_onto_the_rest_of_the_domain():
+    """Excluding one korea.ac.kr address must not silence the 행정실."""
+    hit = never_rescue_match(make_message(sender="bsy1025@korea.ac.kr"),
+                             senders=("humanrights@korea.ac.kr",), keywords=())
+    assert hit is None
+
+
+def test_never_rescue_domain_entry_covers_subdomains_only_by_suffix():
+    senders = ("@example.org",)
+    assert never_rescue_match(make_message(sender="a@example.org"),
+                              senders=senders, keywords=()) == "@example.org"
+    assert never_rescue_match(make_message(sender="a@mail.example.org"),
+                              senders=senders, keywords=()) == "@example.org"
+    assert never_rescue_match(make_message(sender="a@notexample.org"),
+                              senders=senders, keywords=()) is None
+
+
+@pytest.mark.parametrize("sender, subject", [
+    ("고려대학교 고령사회연구원 <aging@korea.ac.kr>", "세미나 안내"),
+    ("noreply@korea.ac.kr", "[고령사회연구원] 정기 포럼 개최 안내"),
+])
+def test_never_rescue_keyword_matches_display_name_or_subject(sender, subject):
+    hit = never_rescue_match(make_message(sender=sender, subject=subject),
+                             senders=(), keywords=("고령사회연구원",))
+    assert hit == "고령사회연구원"
+
+
+def test_never_rescue_keyword_ignores_body():
+    """A student citing the institute in a letter is still a student."""
+    msg = make_message(body="저는 고령사회연구원 과제에 참여한 경험이 있습니다.")
+    assert never_rescue_match(msg, senders=(), keywords=("고령사회연구원",)) is None

@@ -24,6 +24,10 @@ on:
         description: "Override min confidence to rescue (default 6)"
         required: false
         default: ""
+      decline_since:
+        description: "Dry run only: judge inbox applicants since this ISO time (e.g. 2026-09-27T00:00:00+09:00)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -72,7 +76,11 @@ jobs:
           [ $missing -eq 1 ] && exit 1
           echo "✓ Required secrets present"
 
-      - name: Screen spam folder
+      # 같은 스크립트가 스팸 구제 뒤에 받은편지함의 지원자 문의(대학원·포닥·
+      # 방문연구원·인턴)에 거절 답장 "초안"을 만든다. 발송은 하지 않는다 —
+      # 원 메일을 읽지 않음 + 거절초안 라벨로 표시해 교수가 직접 보내게 둔다.
+      # (applicant.py, config/spam_rescue.yml의 applicant_decline)
+      - name: Screen spam folder and draft applicant declines
         env:
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
@@ -90,6 +98,9 @@ jobs:
           fi
           if [ -n "${{ inputs.min_confidence }}" ]; then
             ARGS="$ARGS --min-confidence ${{ inputs.min_confidence }}"
+          fi
+          if [ -n "${{ inputs.decline_since }}" ]; then
+            ARGS="$ARGS --decline-since ${{ inputs.decline_since }}"
           fi
           python scripts/run_spam_rescue.py $ARGS 2>&1 | tee data/spam-rescue.log
           exit "${PIPESTATUS[0]}"

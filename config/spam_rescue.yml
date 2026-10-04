@@ -16,6 +16,18 @@ labels:
   # every morning.
   checked: "SpamRescueChecked"
 
+# Senders he wants left in spam no matter what the model thinks. Checked
+# before classification, so these never cost a Gemini call. A match only ever
+# keeps mail in spam, so it is safe to be generous here.
+#   senders:  exact address, or "@domain" (subdomains included)
+#   keywords: matched against the From display name and the Subject, not body
+never_rescue:
+  senders:
+    - "humanrights@korea.ac.kr"   # 고려대 인권·성평등센터 (월례세미나 등)
+  keywords:
+    - "인권·성평등센터"
+    - "고령사회연구원"            # 발신 주소 미확인 — 표시명/제목으로 거름
+
 llm:
   model: "gemini-2.5-flash"
   fallback_models:
@@ -29,6 +41,29 @@ llm:
   body_chars: 3000
   parallel_requests: 4
   timeout_seconds: 30
+
+# Decline drafts for unsolicited position inquiries (applicant.py). Runs after
+# the rescue in the same job, over the inbox. Never sends: saves a reply draft,
+# marks the inquiry UNREAD and labels it `drafted_label` for him to review.
+applicant_decline:
+  enabled: true
+  # Inquiries received before this are never touched (his call, 2026-10-04:
+  # no backfill of old mail).
+  start_after: "2026-10-04T16:30:00+09:00"
+  drafted_label: "거절초안"
+  # Hidden bookkeeping label stamped on every inbox message already judged,
+  # so each message costs at most one model call.
+  checked_label: "ApplicantChecked"
+  # Korea University applicants are his to answer personally. The prompt
+  # also catches KU students writing from gmail/naver via `ku_affiliated`.
+  excluded_domains:
+    - "korea.ac.kr"
+  prompt_path: "config/applicant_decline_prompt.md"
+  templates_path: "config/applicant_decline_templates.yml"
+  min_confidence: 7
+  max_messages_per_run: 100
+  # Circuit breaker, same idea as max_rescues_per_run.
+  max_drafts_per_run: 10
 
 limits:
   # Ceiling on messages judged in one run. The spam folder self-purges at 30

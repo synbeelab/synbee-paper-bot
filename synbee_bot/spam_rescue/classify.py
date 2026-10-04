@@ -80,12 +80,18 @@ def parse_judgment(text: str, *, model_used: str = "") -> Judgment:
     )
 
 
-def _call_gemini(prompt: str, model: str, api_key: str, timeout: int) -> Judgment:
+def generate_text(prompt: str, model: str, api_key: str,
+                  timeout: int) -> tuple[str | None, str]:
+    """One JSON-mode Gemini call with transient retry.
+
+    Returns (text, "") on success or (None, error description) on failure, so
+    callers with different reply schemas share the retry policy.
+    """
     try:
         from google import genai
         from google.genai import types
     except ImportError:
-        return _error("(google-genai not installed)", model)
+        return None, "(google-genai not installed)"
 
     client = genai.Client(
         api_key=api_key,
@@ -102,7 +108,7 @@ def _call_gemini(prompt: str, model: str, api_key: str, timeout: int) -> Judgmen
                     temperature=0.0,
                 ),
             )
-            return parse_judgment(resp.text or "", model_used=model)
+            return resp.text or "", ""
         except Exception as exc:  # SDK raises a wide range of transport errors
             last_err = exc
             err = str(exc)
@@ -118,7 +124,14 @@ def _call_gemini(prompt: str, model: str, api_key: str, timeout: int) -> Judgmen
                 time.sleep(wait)
                 continue
             break
-    return _error(f"(gemini error: {type(last_err).__name__}: {str(last_err)[:150]})", model)
+    return None, f"(gemini error: {type(last_err).__name__}: {str(last_err)[:150]})"
+
+
+def _call_gemini(prompt: str, model: str, api_key: str, timeout: int) -> Judgment:
+    text, err = generate_text(prompt, model, api_key, timeout)
+    if text is None:
+        return _error(err, model)
+    return parse_judgment(text, model_used=model)
 
 
 def classify(msg: GmailMessage, template: str, *, model: str,

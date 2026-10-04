@@ -32,6 +32,8 @@ _BACKOFF_SECONDS = (10, 30, 60)
 _WANTED_HEADERS = (
     "From", "To", "Cc", "Reply-To", "Subject", "Date",
     "List-Unsubscribe", "Authentication-Results", "Return-Path",
+    # Threading headers, so a drafted reply lands in the applicant's thread.
+    "Message-ID", "Message-Id", "References",
 )
 
 
@@ -62,6 +64,17 @@ class GmailMessage:
     def sender_domain(self) -> str:
         m = re.search(r"@([A-Za-z0-9._-]+)", self.sender)
         return m.group(1).lower().rstrip(">").rstrip(".") if m else ""
+
+    @property
+    def sender_address(self) -> str:
+        """Bare lower-cased address from From, preferring the <...> part."""
+        m = (re.search(r"<([^<>@\s]+@[^<>\s]+)>", self.sender)
+             or re.search(r"([^\s<>\"']+@[^\s<>\"']+)", self.sender))
+        return m.group(1).lower().rstrip(".") if m else ""
+
+    @property
+    def message_id_header(self) -> str:
+        return self.headers.get("Message-ID") or self.headers.get("Message-Id", "")
 
     @property
     def auth_results(self) -> str:
@@ -181,15 +194,20 @@ class GmailClient:
         data = self._request("GET", "/labels")
         return {lb["name"]: lb["id"] for lb in data.get("labels", [])}
 
-    def ensure_label(self, name: str, *, background: str = "", text: str = "") -> str:
-        """Return the id of `name`, creating the label if it does not exist."""
+    def ensure_label(self, name: str, *, background: str = "", text: str = "",
+                     hidden: bool = False) -> str:
+        """Return the id of `name`, creating the label if it does not exist.
+
+        `hidden` keeps a bookkeeping label out of the sidebar and off message
+        rows — for labels stamped on ordinary inbox mail.
+        """
         existing = self.list_labels()
         if name in existing:
             return existing[name]
         body: dict[str, Any] = {
             "name": name,
-            "labelListVisibility": "labelShow",
-            "messageListVisibility": "show",
+            "labelListVisibility": "labelHide" if hidden else "labelShow",
+            "messageListVisibility": "hide" if hidden else "show",
         }
         if background and text:
             body["color"] = {"backgroundColor": background, "textColor": text}
@@ -218,6 +236,58 @@ class GmailClient:
             if not page_token:
                 break
         return ids[:max_results]
+
+    def search_message_ids(self, query: str, *, max_results: int = 100) -> list[str]:
+        """Message ids matching a Gmail search query, newest first."""
+        ids: list[str] = []
+        params: dict[str, Any] = {"q": query, "maxResults": min(100, max_results)}
+        page_token = ""
+        while len(ids) < max_results:
+            if page_token:
+                params["pageToken"] = page_token
+            data = self._request("GET", "/messages", params=params)
+            ids.extend(m["id"] for m in data.get("messages", []))
+            page_token = data.get("nextPageToken", "")
+            if not page_token:
+                break
+        return ids[:max_results]
+
+    def thread_label_sets(self, thread_id: str) -> list[tuple[str, ...]]:
+        """Label ids of every message in a thread, drafts included."""
+        data = self._request("GET", f"/threads/{thread_id}",
+                             params={"format": "minimal"})
+        return [tuple(m.get("labelIds", [])) for m in data.get("messages", [])]
+
+    def has_sent_to(self, address: str) -> bool:
+        """True when he has ever sent mail to `address`.
+
+        The address comes from an untrusted header, so it is stripped of
+        anything that could change the search query and then quoted.
+        """
+        safe = re.sub(r"[^\w.@+-]", "", address)
+        if "@" not in safe:
+            return False
+        return bool(self.search_message_ids(f'in:sent to:"{safe}"', max_results=1))
+
+    def default_signature_html(self) -> str:
+        """The Gmail signature (HTML) of the default send-as address.
+
+        Drafts made through the API never get the signature Gmail's composer
+        adds, so it has to be fetched and appended by hand. Empty string when
+        no signature is set.
+        """
+        data = self._request("GET", "/settings/sendAs")
+        entries = data.get("sendAs", [])
+        default = next((e for e in entries if e.get("isDefault")),
+                       entries[0] if entries else {})
+        return str(default.get("signature", ""))
+
+    def create_draft(self, raw_b64url: str, *, thread_id: str) -> str:
+        """Save a draft (never sends). Returns the draft id."""
+        data = self._request("POST", "/drafts", json={
+            "message": {"raw": raw_b64url, "threadId": thread_id},
+        })
+        return data.get("id", "")
 
     def get_message(self, message_id: str, *, body_chars: int = 4000) -> GmailMessage:
         data = self._request(

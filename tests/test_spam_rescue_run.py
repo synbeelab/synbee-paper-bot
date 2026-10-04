@@ -185,3 +185,15 @@ def test_both_labels_are_ensured_before_any_modification(monkeypatch, cfg):
     run_rescue(client, cfg, api_key="k")
 
     assert client.created_labels == ["SpamRescueChecked", "안전함"]
+
+
+def test_never_rescue_sender_stays_in_spam_without_calling_the_model(monkeypatch, cfg):
+    client = FakeGmail([message("a", sender='"인권·성평등센터" <humanrights@korea.ac.kr>'),
+                        message("b")])
+    stub_classifier(monkeypatch, {"b": rescue_verdict()})  # "a" would KeyError if classified
+    cfg = replace(cfg, never_rescue_senders=("humanrights@korea.ac.kr",))
+
+    summary = run_rescue(client, cfg, api_key="k")
+
+    assert (summary.rescued, summary.kept) == (1, 1)
+    assert ("a", [CHECKED_ID], []) in client.modifications
