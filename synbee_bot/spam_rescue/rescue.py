@@ -97,12 +97,6 @@ def fails_all_authentication(msg: GmailMessage) -> bool:
     )
 
 
-def _sender_address(msg: GmailMessage) -> str:
-    m = (re.search(r"<([^<>@\s]+@[^<>\s]+)>", msg.sender)
-         or re.search(r"([^\s<>\"']+@[^\s<>\"']+)", msg.sender))
-    return m.group(1).lower().rstrip(".") if m else ""
-
-
 def never_rescue_match(msg: GmailMessage, *, senders: tuple[str, ...],
                        keywords: tuple[str, ...]) -> str | None:
     """Return the never_rescue entry this message hits, or None.
@@ -113,7 +107,7 @@ def never_rescue_match(msg: GmailMessage, *, senders: tuple[str, ...],
     so a student who merely mentions an institute is not swept up. This list
     can only keep mail in spam, so a spoofed match costs nothing.
     """
-    address = _sender_address(msg)
+    address = msg.sender_address
     if address:
         domain = address.rsplit("@", 1)[-1]
         for entry in senders:

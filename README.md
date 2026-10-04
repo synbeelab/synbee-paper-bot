@@ -29,6 +29,8 @@ synbee-paper-bot/
 │   ├── toc_journals.yml          # ToC 전수 스윕 대상 (이메일이 부분 목록인 저널)
 │   ├── spam_rescue.yml           # 스팸함 구제 설정 (라벨·임계값·안전장치)
 │   ├── spam_rescue_prompt.md     # 스팸/정상 판정 프롬프트
+│   ├── applicant_decline_prompt.md    # 지원자 문의 판정 프롬프트
+│   ├── applicant_decline_templates.yml # 거절 초안 문구 (역할·언어별) + 서명 폴백
 │   └── config.yml.example        # 메인 설정 템플릿 (복사 후 사용)
 ├── synbee_bot/                   # 패키지
 │   ├── config.py                 # .env + config.yml 로더
@@ -44,7 +46,8 @@ synbee-paper-bot/
 │   └── spam_rescue/              # Gmail 스팸함 구제 (독립 서브패키지)
 │       ├── gmail.py              #   Gmail REST 클라이언트 (refresh token)
 │       ├── classify.py           #   Gemini 스팸/정상 판정
-│       └── rescue.py             #   판정 → 라벨 조작 + 안전장치
+│       ├── rescue.py             #   판정 → 라벨 조작 + 안전장치
+│       └── applicant.py          #   받은편지함 지원자 문의 → 거절 답장 초안
 ├── scripts/
 │   ├── build_query.py            # YAML → PubMed/bioRxiv 쿼리 생성
 │   ├── sanity_check.py           # 실시간 PubMed hit 수 검증
@@ -180,6 +183,20 @@ py scripts\run_spam_rescue.py              # 적용
 [SETUP.md §9-B](SETUP.md) 참고. 별도 repo로 분리하지 않은 이유는
 `GEMINI_API_KEY`를 공유하고, 매일 도는 `daily.yml` 덕분에 repo가 계속 활성
 상태라 GitHub의 **60일 무활동 자동 비활성화**에 걸리지 않기 때문이다.
+
+### 지원자 거절 초안
+
+같은 실행에서 스팸 구제 뒤에 받은편지함을 훑어, 외부에서 온 랩 지원 문의에
+**거절 답장 초안**을 만든다. **발송은 절대 하지 않는다** — 원 메일을 *읽지 않음* +
+`거절초안` 라벨로 표시해 두면 교수가 Gmail에서 보고 보낼지 정한다.
+
+- 문구: 대학원(석·박사) → "이미 다 뽑았다", 포닥·방문연구원·인턴 → "자원·공간 부족"
+  (`config/applicant_decline_templates.yml`). 모델은 분류·이름 추출만 하고 본문은 안 쓴다.
+- 제외: `korea.ac.kr` 발신자와 본문상 고려대 소속, 제3자 추천, 이미 답장/초안이 있는
+  스레드, 예전에 메일을 보낸 적 있는 상대, `start_after` 이전 메일.
+- API로 만든 초안엔 Gmail 서명이 자동으로 안 붙으므로 실행 시 Gmail 서명 설정을 읽어
+  붙인다(실패 시 템플릿 파일의 `signature_fallback`).
+- 끄기: `config/spam_rescue.yml`의 `applicant_decline.enabled: false`, 또는 `--no-decline`.
 
 ## 다음 단계
 

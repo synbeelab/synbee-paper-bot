@@ -1,0 +1,83 @@
+# Decline drafts for unsolicited position inquiries.
+#
+# The model never writes the body: it only classifies the role and language
+# and extracts the name. The text below is his own wording, filled in by code.
+#   {salutation}  e.g. "Dear Dr. Khodi," / "홍길동 학생에게,"
+#   {role}        a role_phrases entry
+# His Gmail signature is appended below each body at run time (fetched live
+# from Gmail settings; `signature_fallback` if that call fails). API-made
+# drafts get no signature otherwise — the first hand-made draft went out
+# without one.
+#
+# Which template each role gets (his decision, 2026-10-04):
+#   grad → secured   (이미 다 뽑았다)
+#   everything else → resources   (자원·공간 부족)
+role_template:
+  grad: secured
+  postdoc: resources
+  visiting: resources
+  intern: resources
+
+role_phrases:
+  en:
+    grad: graduate students
+    postdoc: postdoctoral researchers
+    visiting: visiting researchers
+    intern: interns
+  ko:
+    grad: 대학원생
+    postdoc: 박사후연구원
+    visiting: 방문연구원
+    intern: 인턴 연구생
+
+salutation:
+  en:
+    doctor: "Dear Dr. {family_name},"
+    named: "Dear {given_name},"
+    fallback: "Dear Applicant,"
+  ko:
+    doctor: "{full_name} 박사님께,"
+    named: "{full_name} 학생에게,"
+    fallback: "안녕하세요,"
+
+templates:
+  en:
+    secured: |
+      {salutation}
+
+      Thank you for your interest in my lab. However, as I have already secured more than enough grad student candidates for next year, I cannot consider more.
+      I hope you can find better opportunities.
+
+      Best,
+      Dongsoo
+    resources: |
+      {salutation}
+
+      Thank you for your interest in my lab. Unfortunately, due to current constraints in resources and lab space, we are not in a position to accept additional {role} at this time.
+
+      I wish you the best in finding another opportunity.
+
+      Best regards,
+      Dongsoo
+  ko:
+    secured: |
+      {salutation}
+
+      우리 연구실에 관심을 가져주어 고맙습니다.
+      다만 내년까지 입학 예정인 학생들이 모두 이미 계획되어 있어 추가 선발은 어렵겠습니다.
+      아쉽지만 다른 기회를 알아보기 바라겠습니다.
+
+      양동수 드림.
+    resources: |
+      {salutation}
+
+      저희 연구실에 관심을 가져주셔서 감사합니다.
+      다만 현재 연구실 자원 및 공간의 제약으로 인해 {role} 추가 선발은 고려하고 있지 않습니다.
+      다른 좋은 기회를 얻으시길 바랍니다.
+
+      양동수 드림
+
+# Used only when the live Gmail signature cannot be read. Copied from his
+# sent mail on 2026-10-04 — update here if the Gmail signature changes.
+signature_fallback: |
+  <div dir="ltr"><b>Dr. Dongsoo Yang</b><div>Associate Professor</div><div>Department of Chemical and Biological Engineering</div><div>Korea University</div><div>Tel: +2-3290-4855</div><div>Web: <a href="https://yanglaboratory.com" target="_blank">https://yanglaboratory.com</a></div></div>

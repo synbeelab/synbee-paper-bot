@@ -17,6 +17,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from synbee_bot.spam_rescue.applicant import (  # noqa: E402
+    load_decline_config,
+    run_decline,
+)
 from synbee_bot.spam_rescue.gmail import GmailClient, GmailError  # noqa: E402
 from synbee_bot.spam_rescue.rescue import (  # noqa: E402
     load_rescue_config,
@@ -41,6 +45,8 @@ def parse_args() -> argparse.Namespace:
                         help="override the rescue circuit breaker")
     parser.add_argument("--min-confidence", type=int, default=None,
                         help="override llm.min_confidence")
+    parser.add_argument("--no-decline", action="store_true",
+                        help="skip the applicant decline-draft stage")
     return parser.parse_args()
 
 
@@ -83,16 +89,38 @@ def main() -> int:
         sys.stderr.write(f"Gmail API error: {exc}\n")
         return 1
 
+    status = 0
     if summary.aborted:
-        return 1
-    if summary.scanned and summary.error_ratio > cfg.max_error_ratio:
+        status = 1
+    elif summary.scanned and summary.error_ratio > cfg.max_error_ratio:
         sys.stderr.write(
             f"{summary.retry}/{summary.scanned} messages failed to classify "
             f"(> {cfg.max_error_ratio:.0%}); they were left in spam unmarked "
             f"and will be retried, but the cause needs checking.\n"
         )
+        status = 1
+
+    # Runs even when the rescue stage flagged a problem: a tripped rescue
+    # breaker changed nothing, and the two stages touch different mail.
+    if args.no_decline:
+        return status
+    try:
+        dcfg = load_decline_config(args.config)
+        decline = run_decline(
+            client, dcfg, api_key=os.environ["GEMINI_API_KEY"], dry_run=args.dry_run
+        )
+    except (GmailError, ValueError) as exc:
+        sys.stderr.write(f"applicant decline stage failed: {exc}\n")
         return 1
-    return 0
+    if decline.aborted:
+        return 1
+    if decline.scanned and decline.error_ratio > cfg.max_error_ratio:
+        sys.stderr.write(
+            f"{decline.retry}/{decline.scanned} inbox messages failed to "
+            f"classify for the decline stage; left unmarked for retry.\n"
+        )
+        return 1
+    return status
 
 
 if __name__ == "__main__":
