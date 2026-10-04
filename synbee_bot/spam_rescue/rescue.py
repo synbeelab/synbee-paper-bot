@@ -39,6 +39,9 @@ class RescueConfig:
     max_messages_per_run: int
     max_rescues_per_run: int
     max_error_ratio: float
+    # Mail matching these stays in spam without ever reaching the model.
+    never_rescue_senders: tuple[str, ...] = ()
+    never_rescue_keywords: tuple[str, ...] = ()
 
 
 def load_rescue_config(path: Path | None = None) -> RescueConfig:
@@ -49,6 +52,7 @@ def load_rescue_config(path: Path | None = None) -> RescueConfig:
     labels = raw.get("labels", {}) or {}
     llm = raw.get("llm", {}) or {}
     limits = raw.get("limits", {}) or {}
+    never = raw.get("never_rescue", {}) or {}
 
     return RescueConfig(
         safe_label=str(labels.get("safe", "안전함")),
@@ -65,6 +69,10 @@ def load_rescue_config(path: Path | None = None) -> RescueConfig:
         max_messages_per_run=int(limits.get("max_messages_per_run", 300)),
         max_rescues_per_run=int(limits.get("max_rescues_per_run", 40)),
         max_error_ratio=float(limits.get("max_error_ratio", 0.5)),
+        never_rescue_senders=tuple(str(x).strip().lower()
+                                   for x in (never.get("senders") or [])),
+        never_rescue_keywords=tuple(str(x).strip()
+                                    for x in (never.get("keywords") or [])),
     )
 
 
@@ -87,6 +95,38 @@ def fails_all_authentication(msg: GmailMessage) -> bool:
         re.search(rf"\b{mechanism}=(?:fail|softfail|permerror)\b", auth)
         for mechanism in ("spf", "dkim", "dmarc")
     )
+
+
+def _sender_address(msg: GmailMessage) -> str:
+    m = (re.search(r"<([^<>@\s]+@[^<>\s]+)>", msg.sender)
+         or re.search(r"([^\s<>\"']+@[^\s<>\"']+)", msg.sender))
+    return m.group(1).lower().rstrip(".") if m else ""
+
+
+def never_rescue_match(msg: GmailMessage, *, senders: tuple[str, ...],
+                       keywords: tuple[str, ...]) -> str | None:
+    """Return the never_rescue entry this message hits, or None.
+
+    `senders` entries are exact addresses, or `@domain` for a whole domain
+    (subdomains included). `keywords` are matched case-insensitively against
+    the From header (display name included) and the Subject — never the body,
+    so a student who merely mentions an institute is not swept up. This list
+    can only keep mail in spam, so a spoofed match costs nothing.
+    """
+    address = _sender_address(msg)
+    if address:
+        domain = address.rsplit("@", 1)[-1]
+        for entry in senders:
+            if entry.startswith("@"):
+                if domain == entry[1:] or domain.endswith("." + entry[1:]):
+                    return entry
+            elif address == entry:
+                return entry
+    haystack = f"{msg.sender}\n{msg.subject}".casefold()
+    for keyword in keywords:
+        if keyword and keyword.casefold() in haystack:
+            return keyword
+    return None
 
 
 def decide(msg: GmailMessage, judgment: Judgment, *, min_confidence: int) -> tuple[Action, str]:
@@ -166,6 +206,13 @@ def run_rescue(client: GmailClient, cfg: RescueConfig, *, api_key: str,
     template = cfg.prompt_path.read_text(encoding="utf-8")
 
     def judge(msg: GmailMessage) -> Decision:
+        excluded = never_rescue_match(msg, senders=cfg.never_rescue_senders,
+                                      keywords=cfg.never_rescue_keywords)
+        if excluded:
+            judgment = Judgment(verdict="SPAM", category="never_rescue",
+                                confidence=10, reason=f"never_rescue: {excluded}")
+            return Decision(message=msg, judgment=judgment, action=Action.KEEP,
+                            note=f"never_rescue list — {excluded}")
         judgment = classify(
             msg, template, model=cfg.model,
             fallback_models=cfg.fallback_models, api_key=api_key,

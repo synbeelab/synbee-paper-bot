@@ -16,6 +16,18 @@ labels:
   # every morning.
   checked: "SpamRescueChecked"
 
+# Senders he wants left in spam no matter what the model thinks. Checked
+# before classification, so these never cost a Gemini call. A match only ever
+# keeps mail in spam, so it is safe to be generous here.
+#   senders:  exact address, or "@domain" (subdomains included)
+#   keywords: matched against the From display name and the Subject, not body
+never_rescue:
+  senders:
+    - "humanrights@korea.ac.kr"   # 고려대 인권·성평등센터 (월례세미나 등)
+  keywords:
+    - "인권·성평등센터"
+    - "고령사회연구원"            # 발신 주소 미확인 — 표시명/제목으로 거름
+
 llm:
   model: "gemini-2.5-flash"
   fallback_models:
