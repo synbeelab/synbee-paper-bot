@@ -24,6 +24,10 @@ on:
         description: "Override min confidence to rescue (default 6)"
         required: false
         default: ""
+      decline_since:
+        description: "Dry run only: judge inbox applicants since this ISO time (e.g. 2026-09-27T00:00:00+09:00)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -94,6 +98,9 @@ jobs:
           fi
           if [ -n "${{ inputs.min_confidence }}" ]; then
             ARGS="$ARGS --min-confidence ${{ inputs.min_confidence }}"
+          fi
+          if [ -n "${{ inputs.decline_since }}" ]; then
+            ARGS="$ARGS --decline-since ${{ inputs.decline_since }}"
           fi
           python scripts/run_spam_rescue.py $ARGS 2>&1 | tee data/spam-rescue.log
           exit "${PIPESTATUS[0]}"

@@ -13,6 +13,7 @@ import argparse
 import os
 import sys
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -47,6 +48,9 @@ def parse_args() -> argparse.Namespace:
                         help="override llm.min_confidence")
     parser.add_argument("--no-decline", action="store_true",
                         help="skip the applicant decline-draft stage")
+    parser.add_argument("--decline-since", default=None,
+                        help="dry-run only: judge inbox mail since this ISO time "
+                             "(e.g. 2026-09-27T00:00:00+09:00) instead of start_after")
     return parser.parse_args()
 
 
@@ -106,6 +110,15 @@ def main() -> int:
         return status
     try:
         dcfg = load_decline_config(args.config)
+        if args.decline_since:
+            # Never allowed to write: start_after is what keeps old inquiries
+            # from being drafted, so an override is for inspection only.
+            if not args.dry_run:
+                raise ValueError("--decline-since requires --dry-run")
+            since = datetime.fromisoformat(args.decline_since)
+            if since.tzinfo is None:
+                raise ValueError("--decline-since needs a UTC offset")
+            dcfg = replace(dcfg, start_after=since)
         decline = run_decline(
             client, dcfg, api_key=os.environ["GEMINI_API_KEY"], dry_run=args.dry_run
         )
