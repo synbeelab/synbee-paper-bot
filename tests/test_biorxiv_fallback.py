@@ -42,7 +42,8 @@ sys.path.insert(0, str(ROOT))
 
 from synbee_bot import sources  # noqa: E402
 from synbee_bot.sources import (  # noqa: E402
-    SourceFetchError, biorxiv_recent, europepmc_preprints, fetch_from_biorxiv,
+    PartialSourceError, SourceFetchError, biorxiv_recent, collect_all,
+    europepmc_preprints, fetch_from_biorxiv,
 )
 
 
@@ -331,9 +332,10 @@ def test_the_outage_falls_back_instead_of_losing_the_day(monkeypatch):
     }))
     monkeypatch.setattr(sources, "filter_biorxiv_by_keywords", lambda papers, kw: papers)
 
-    papers = fetch_from_biorxiv(since_days=3)
+    with pytest.raises(PartialSourceError) as excinfo:
+        fetch_from_biorxiv(since_days=3)
 
-    assert [p.doi for p in papers] == ["10.64898/2026.09.20.753045"]
+    assert [p.doi for p in excinfo.value.papers] == ["10.64898/2026.09.20.753045"]
 
 
 def test_the_fallback_is_not_used_when_the_native_api_is_healthy(monkeypatch):
@@ -376,7 +378,8 @@ def test_the_fallback_reports_which_path_served_the_papers(monkeypatch, capsys):
     }))
     monkeypatch.setattr(sources, "filter_biorxiv_by_keywords", lambda papers, kw: papers)
 
-    fetch_from_biorxiv(since_days=3)
+    with pytest.raises(PartialSourceError):
+        fetch_from_biorxiv(since_days=3)
 
     assert "Europe PMC" in capsys.readouterr().err
 
@@ -438,3 +441,69 @@ def test_the_fallback_window_covers_the_observed_indexing_lag(monkeypatch):
     start = (dt.date.today() - dt.timedelta(days=2 + sources.EUROPEPMC_LAG_DAYS))
     assert sources.EUROPEPMC_LAG_DAYS >= 4, "the observed tail reached 4 days"
     assert start.isoformat() in urllib.parse.unquote(url)
+
+
+# --- "no posts found" is an outage, and a fallback never moves the watermark -
+
+NO_POSTS = json.dumps({"messages": [{"status": "no posts found"}],
+                       "collection": []}).encode("utf-8")
+
+
+def test_a_well_formed_empty_window_falls_back_instead_of_reading_as_quiet(monkeypatch):
+    """2026-10-03 →: api.biorxiv.org kept answering, correctly formed, "no
+    posts found" for every day after 10-02 while the RSS feeds froze at the
+    same point. bioRxiv never has an empty two-day window, but nothing raised,
+    so three daily runs reported "biorxiv: 0 papers", advanced the watermark
+    and never reached the Europe PMC fallback."""
+    monkeypatch.setattr(sources.urllib.request, "urlopen", route_urlopen(**{
+        "api.biorxiv.org": NO_POSTS,
+        "ebi.ac.uk": epmc_page(["10.64898/2026.10.02.700001"]),
+    }))
+    monkeypatch.setattr(sources, "filter_biorxiv_by_keywords", lambda papers, kw: papers)
+
+    with pytest.raises(PartialSourceError) as excinfo:
+        fetch_from_biorxiv(since_days=1)
+
+    assert [p.doi for p in excinfo.value.papers] == ["10.64898/2026.10.02.700001"]
+    assert "no preprints" in str(excinfo.value)
+
+
+def test_an_empty_window_with_europe_pmc_down_too_is_a_plain_failure(monkeypatch):
+    monkeypatch.setattr(sources.urllib.request, "urlopen", route_urlopen(**{
+        "api.biorxiv.org": NO_POSTS,
+        "ebi.ac.uk": urllib.error.HTTPError("u", 503, "down", {}, None),
+    }))
+
+    with pytest.raises(SourceFetchError) as excinfo:
+        fetch_from_biorxiv(since_days=1)
+
+    assert not isinstance(excinfo.value, PartialSourceError)
+
+
+def test_keyword_filtering_everything_out_is_still_a_healthy_run(monkeypatch):
+    """The emptiness check is on what the API served, not on what survived the
+    mission keywords — a day with no relevant preprints is a real quiet day."""
+    monkeypatch.setattr(sources.urllib.request, "urlopen", route_urlopen(**{
+        "api.biorxiv.org": native_page(["10.64898/off-topic"]),
+        "ebi.ac.uk": AssertionError("a healthy API must not fall back"),
+    }))
+    monkeypatch.setattr(sources, "filter_biorxiv_by_keywords", lambda papers, kw: [])
+
+    assert fetch_from_biorxiv(since_days=1) == []
+
+
+def test_papers_served_by_the_fallback_are_delivered_but_hold_the_watermark(monkeypatch):
+    """Europe PMC indexes preprints days late. Advancing the watermark on its
+    papers would close the window the native API needs to reopen once it is
+    back — the only path to the preprints Europe PMC had not indexed yet."""
+    monkeypatch.setattr(sources.urllib.request, "urlopen", route_urlopen(**{
+        "api.biorxiv.org": NO_POSTS,
+        "ebi.ac.uk": epmc_page(["10.64898/2026.10.02.700001"]),
+    }))
+    monkeypatch.setattr(sources, "filter_biorxiv_by_keywords", lambda papers, kw: papers)
+
+    result = collect_all(1, 1, 1, pubmed=False, biorxiv=True, rss=False)
+
+    assert [p.doi for p in result.papers["biorxiv"]] == ["10.64898/2026.10.02.700001"]
+    assert "biorxiv" in result.failures
+    assert "biorxiv" not in result.succeeded

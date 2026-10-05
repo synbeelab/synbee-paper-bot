@@ -564,6 +564,15 @@ def fetch_from_biorxiv(since_days: int) -> list[Paper]:
     keywords = collect_keywords(keywords_yaml, include_aux=False)
     try:
         raw = biorxiv_recent("biorxiv", since_days)
+        if not raw:
+            # bioRxiv posts 60+ preprints on a weekend day and ~300 on a
+            # weekday, and every window spans at least two calendar days, so a
+            # well-formed "no posts found" is the API, not a quiet window
+            # (2026-10-03 →: read as quiet, it advanced the watermark over days
+            # nobody had seen and never reached the fallback).
+            raise SourceFetchError(
+                f"bioRxiv API returned no preprints for the last {since_days + 1} "
+                "calendar days — an outage, not a quiet window")
     except SourceFetchError as primary:
         # Europe PMC lags bioRxiv by a day or two, so it is a stand-in and not
         # a replacement: only reach for it once the native API has given up.
@@ -576,6 +585,13 @@ def fetch_from_biorxiv(since_days: int) -> list[Paper]:
                 f"bioRxiv API: {primary} || Europe PMC fallback: {backup}"
             ) from primary
         sys.stderr.write(f"  ↪ Europe PMC served {len(raw)} preprints\n")
+        # Deliver the stand-in's papers but hold the watermark: Europe PMC
+        # indexes days late, and the window the next run reopens from the last
+        # native success is what recovers whatever it had not indexed yet.
+        raise PartialSourceError(
+            f"bioRxiv API unusable ({primary}); Europe PMC stood in with "
+            f"{len(raw)} preprints — watermark held until the API recovers",
+            filter_biorxiv_by_keywords(raw, keywords["mission"])) from primary
     return filter_biorxiv_by_keywords(raw, keywords["mission"])
 
 

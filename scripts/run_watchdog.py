@@ -28,8 +28,8 @@ sys.path.insert(0, str(ROOT))
 
 from synbee_bot.catchup import kst_day  # noqa: E402
 from synbee_bot.watchdog import (  # noqa: E402
-    AUTO_DISABLED, PIPELINES, Report, delivery_verdict, find_duplicate_posts,
-    render, silent_feeds, volume_drops,
+    AUTO_DISABLED, PIPELINES, Report, checked_day, delivery_verdict,
+    find_duplicate_posts, render, silent_feeds, volume_drops,
 )
 
 API = "https://api.github.com"
@@ -72,7 +72,7 @@ def check_deliveries(repo: str, token: str, db: sqlite3.Connection | None,
     for pipe in PIPELINES:
         runs = _gh("GET", f"/repos/{repo}/actions/workflows/{pipe.workflow_file}/runs"
                           "?per_page=20", token)["workflow_runs"]
-        today = kst_day(now)
+        today = checked_day(now)
         ran = {r["id"]: _work_job_ran(repo, token, r["id"], pipe.work_job)
                for r in runs
                if r.get("conclusion") == "success" and kst_day(_ts(r["created_at"])) == today}
@@ -180,7 +180,9 @@ def main() -> int:
         ("workflows", lambda: check_workflows(repo, token, report, dry_run=dry_run)),
         ("deliveries", lambda: check_deliveries(repo, token, db, report,
                                                 now=now, dry_run=dry_run)),
-        ("content", lambda: check_content(db, report, today_utc=now.date(),
+        # seen.pushed_at is UTC, and every run of KST day D (09:00–24:00 KST)
+        # writes on UTC day D, so the checked KST day is also the UTC day to read.
+        ("content", lambda: check_content(db, report, today_utc=checked_day(now),
                                           min_score=min_score)),
     ):
         try:
@@ -188,7 +190,7 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001 — report and keep checking
             report.problems.append(f"watchdog '{name}' 점검 자체가 실패: {type(e).__name__}: {e}")
 
-    text = render(report, today=kst_day(now))
+    text = render(report, today=checked_day(now))
     print(text)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:

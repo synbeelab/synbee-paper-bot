@@ -30,8 +30,8 @@ from synbee_bot.models import Paper  # noqa: E402
 from synbee_bot.sources import CollectResult, PartialSourceError, collect_all  # noqa: E402
 from synbee_bot.storage import SeenDB  # noqa: E402
 from synbee_bot.watchdog import (  # noqa: E402
-    PIPELINES, Report, delivery_verdict, find_duplicate_posts, render,
-    silent_feeds, volume_drops,
+    PIPELINES, Report, checked_day, delivery_verdict, find_duplicate_posts,
+    render, silent_feeds, volume_drops,
 )
 
 LONG_TITLE = "Heterologous engineering of receptors using OrthoRep for directed evolution"
@@ -320,3 +320,29 @@ def test_render_says_nothing_is_wrong_only_when_nothing_is():
     assert "이상 없음" in render(Report(), today=date(2026, 10, 3))
     r = Report(actions=["daily.yml → 재실행"])
     assert r.needs_attention and "자동 조치" in render(r, today=date(2026, 10, 3))
+
+
+# --- watchdog: a late run checks the day it was scheduled for --------------------
+
+def test_a_watchdog_arriving_after_midnight_checks_the_day_before():
+    """2026-10-05: the 16:17 KST watchdog arrived at 00:57 KST on 10-06, read
+    10-06 as "today", found no daily (not due until 07:47) and re-dispatched a
+    delivery that had gone out normally the morning before."""
+    late = datetime(2026, 10, 5, 15, 57, tzinfo=timezone.utc)     # 10-06 00:57 KST
+    delivered = run(1, created="2026-10-05T01:17:22Z")             # 10-05 10:17 KST
+    marks = {s: date(2026, 10, 5) for s in DAILY.sources}
+
+    assert checked_day(late) == date(2026, 10, 5)
+    v = delivery_verdict(DAILY, [delivered], {1: True}, marks, now=late)
+    assert v.status == "ok" and not v.should_dispatch
+
+
+def test_an_on_time_afternoon_watchdog_still_checks_its_own_day():
+    assert checked_day(datetime(2026, 10, 5, 8, 30, tzinfo=timezone.utc)) == date(2026, 10, 5)
+    assert checked_day(datetime(2026, 10, 5, 3, 0, tzinfo=timezone.utc)) == date(2026, 10, 5)
+
+
+def test_saturdays_weekly_is_still_checked_by_a_run_landing_on_sunday_morning():
+    late = datetime(2026, 10, 3, 16, 30, tzinfo=timezone.utc)     # Sun 01:30 KST
+    v = delivery_verdict(WEEKLY, [], {}, {}, now=late)
+    assert v.status == "missing"
