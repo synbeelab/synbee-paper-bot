@@ -21,6 +21,7 @@ Pure decision logic lives here; I/O lives in scripts/run_watchdog.py.
 """
 from __future__ import annotations
 
+import math
 import statistics
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -218,16 +219,29 @@ def silent_feeds(
     today: date,
     quiet_days: int = 4,
     min_before: int = 5,
+    rhythm_slack: float = 1.5,
 ) -> list[str]:
-    """RSS feeds that delivered before but nothing for `quiet_days` days."""
+    """RSS feeds that have gone quiet for longer than their own rhythm allows.
+
+    A fixed window misreads issue-based feeds: Cell's `current.rss` lists only
+    the current issue, so new items arrive every 14 days and a 4-day rule
+    called it dead on 10 days of every 14 (2026-10-06). The allowed silence is
+    therefore `rhythm_slack` × the longest gap the feed has shown between
+    active days, never less than `quiet_days`. A feed with fewer than three
+    active days has no measurable rhythm and is not judged — the weekly
+    Crossref sweep still covers those journals.
+    """
     findings = []
     for feed, by_day in sorted(feed_counts.items()):
-        recent = sum(by_day.get(today - timedelta(days=d), 0) for d in range(quiet_days))
-        before = sum(by_day.get(today - timedelta(days=d), 0)
-                     for d in range(quiet_days, quiet_days + 14))
-        if recent == 0 and before >= min_before:
-            findings.append(f"RSS '{feed}': 0 papers in {quiet_days} days "
-                            f"(had {before} in the 2 weeks before)")
+        active = sorted(d for d, n in by_day.items() if n and d <= today)
+        if len(active) < 3 or sum(by_day[d] for d in active) < min_before:
+            continue
+        longest_gap = max((b - a).days for a, b in zip(active, active[1:]))
+        allowed = max(quiet_days, math.ceil(rhythm_slack * longest_gap))
+        silence = (today - active[-1]).days
+        if silence >= allowed:
+            findings.append(f"RSS '{feed}': 0 papers in {silence} days "
+                            f"(normally at most {longest_gap} days apart)")
     return findings
 
 

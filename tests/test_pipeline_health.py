@@ -316,6 +316,66 @@ def test_a_feed_that_went_quiet_is_flagged():
     assert len(silent_feeds(feeds, today=today)) == 1
 
 
+# The real Cell feed (current.rss = the current issue only), as seen.db held it.
+CELL_ISSUES = {date(2026, 8, 21): 6, date(2026, 9, 4): 8,
+               date(2026, 9, 18): 8, date(2026, 10, 2): 8}
+
+
+def test_a_biweekly_issue_feed_between_issues_is_not_silent():
+    """2026-10-06: "RSS 'Cell': 0 papers in 4 days" — four days into a 14-day
+    issue cycle. The old fixed 4-day rule would have repeated it daily until
+    the next issue."""
+    assert silent_feeds({"Cell": CELL_ISSUES}, today=date(2026, 10, 6)) == []
+    assert silent_feeds({"Cell": CELL_ISSUES}, today=date(2026, 10, 16)) == []
+
+
+def test_a_biweekly_issue_feed_that_misses_an_issue_is_silent():
+    found = silent_feeds({"Cell": CELL_ISSUES}, today=date(2026, 10, 24))
+    assert len(found) == 1 and "Cell" in found[0]
+
+
+def test_a_feed_with_too_little_history_to_know_its_rhythm_is_not_judged():
+    assert silent_feeds({"Cell Host & Microbe": {date(2026, 9, 10): 7}},
+                        today=date(2026, 10, 6)) == []
+
+
+# --- watchdog: counts are per KST day, the same day a delivery belongs to -------
+
+def _load_run_watchdog():
+    spec = importlib.util.spec_from_file_location(
+        "run_watchdog", ROOT / "scripts" / "run_watchdog.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _seen_db(tmp_path, rows):
+    db = SeenDB(tmp_path / "seen.db")
+    db.conn.executemany(
+        "INSERT INTO seen (id, source, title, journal, pushed_at) VALUES (?, ?, ?, ?, ?)",
+        rows)
+    db.conn.commit()
+    return db.conn
+
+
+def test_a_delivery_after_midnight_kst_counts_for_its_kst_day(tmp_path):
+    """2026-10-06: the bioRxiv recovery dispatch ran at 02:31 KST (17:31 UTC on
+    10-05) and was that KST day's only delivery. Counted by UTC date, 10-06
+    looked empty: "biorxiv: 0 papers today", "rss: 0 papers today"."""
+    rows = []
+    for d in range(1, 15):
+        day = date(2026, 10, 6) - dt.timedelta(days=d)
+        rows += [(f"biorxiv:{day}:{i}", "biorxiv", "t", "bioRxiv", f"{day} 01:00:00")
+                 for i in range(12)]
+    rows += [(f"biorxiv:late:{i}", "biorxiv", "t", "bioRxiv", "2026-10-05 17:34:13")
+             for i in range(14)]
+    conn = _seen_db(tmp_path, rows)
+
+    report = Report()
+    _load_run_watchdog().check_content(conn, report, day=date(2026, 10, 6), min_score=6)
+    assert not [p for p in report.problems if "수집량" in p], report.problems
+
+
 def test_render_says_nothing_is_wrong_only_when_nothing_is():
     assert "이상 없음" in render(Report(), today=date(2026, 10, 3))
     r = Report(actions=["daily.yml → 재실행"])
