@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from .catchup import kst_day, parse_github_ts
+from .catchup import KST, kst_day, parse_github_ts
 from .dedup import doi_kind, title_key, titles_may_match
 
 
@@ -51,6 +51,22 @@ PIPELINES: tuple[Pipeline, ...] = (
     Pipeline("daily.yml", frozenset(range(7)), "run", ("pubmed", "biorxiv", "rss")),
     Pipeline("weekly.yml", frozenset({5}), "run", ("weekly_pubmed", "crossref_toc")),
 )
+
+#: The watchdog is scheduled for the afternoon, after the day's last catch-up,
+#: but GitHub delivers schedule events hours late — on 2026-10-05 the 16:17 KST
+#: run arrived at 00:57 KST the next day. Read as "today", that run checked a
+#: day whose daily was not due for another seven hours, reported it missing and
+#: re-dispatched it. A run before this KST hour is a late check of yesterday.
+DAY_ROLLOVER_HOUR_KST = 12
+
+
+def checked_day(now: datetime) -> date:
+    """The KST day a watchdog run arriving at `now` is responsible for."""
+    local = now.astimezone(KST)
+    if local.hour < DAY_ROLLOVER_HOUR_KST:
+        return local.date() - timedelta(days=1)
+    return local.date()
+
 
 #: Workflows GitHub may auto-disable after 60 idle days. A workflow somebody
 #: disabled by hand (`disabled_manually`) is a decision, not a fault.
@@ -89,13 +105,14 @@ def delivery_verdict(
     *,
     now: datetime,
 ) -> DeliveryVerdict:
-    """Did today's (KST) delivery of `pipeline` happen, and was it complete?
+    """Did the checked day's (KST) delivery of `pipeline` happen, and was it
+    complete? The checked day is `checked_day(now)`, not the calendar day.
 
     `runs` are GitHub run records, newest first. `work_job_ran[run_id]` says
     whether that run's work job actually executed and succeeded (a run whose
     work job the guard skipped is not a delivery).
     """
-    today = kst_day(now)
+    today = checked_day(now)
     if today.weekday() not in pipeline.days:
         return DeliveryVerdict("not_due")
 
