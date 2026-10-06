@@ -98,19 +98,29 @@ def check_deliveries(repo: str, token: str, db: sqlite3.Connection | None,
                 "재실행해도 소용없어 생략. 워터마크가 30일까지 창을 넓혀 회수함")
 
 
+#: How far back the content checks read. silent_feeds needs a few cycles of a
+#: biweekly issue feed to learn its rhythm; the other checks look at 14 days.
+CONTENT_LOOKBACK_DAYS = 60
+
+
 def check_content(db: sqlite3.Connection | None, report: Report, *,
-                  today_utc: date, min_score: int) -> None:
+                  day: date, min_score: int) -> None:
+    """`day` is a KST day, and rows are bucketed by the KST day they were
+    written — the same day delivery_verdict assigns their run to. pushed_at is
+    UTC, and a delivery between 00:00 and 09:00 KST (the 2026-10-06 bioRxiv
+    recovery dispatch ran at 02:31) lands on the previous UTC day."""
     if db is None:
         report.problems.append("seen.db 캐시를 복원하지 못해 내용 점검(중복·수집량)을 건너뜀")
         return
-    since = (today_utc - timedelta(days=20)).isoformat()
+    since = (day - timedelta(days=CONTENT_LOOKBACK_DAYS)).isoformat()
     rows = [dict(r) for r in db.execute(
-        "SELECT id, source, title, journal, doi, verdict, score, date(pushed_at) AS d "
-        "FROM seen WHERE date(pushed_at) >= ?", (since,))]
+        "SELECT id, source, title, journal, doi, verdict, score, "
+        "date(pushed_at, '+9 hours') AS d "
+        "FROM seen WHERE date(pushed_at, '+9 hours') >= ?", (since,))]
 
     posted = [r for r in rows
               if (r["verdict"] or "").upper() == "YES" and (r["score"] or 0) >= min_score]
-    recent = (today_utc - timedelta(days=1)).isoformat()
+    recent = (day - timedelta(days=1)).isoformat()
     for group in find_duplicate_posts(posted):
         if max(m["d"] for m in group) < recent:
             continue  # reported on an earlier day
@@ -126,8 +136,8 @@ def check_content(db: sqlite3.Connection | None, report: Report, *,
             by_source[r["source"]][d] += 1
         if r["source"] == "rss":
             by_feed[r["journal"] or "?"][d] += 1
-    report.problems += [f"수집량 급감 — {f}" for f in volume_drops(by_source, today=today_utc)]
-    report.problems += silent_feeds(by_feed, today=today_utc)
+    report.problems += [f"수집량 급감 — {f}" for f in volume_drops(by_source, today=day)]
+    report.problems += silent_feeds(by_feed, today=day)
 
 
 def _watermarks(db: sqlite3.Connection | None) -> dict[str, date | None]:
@@ -180,9 +190,7 @@ def main() -> int:
         ("workflows", lambda: check_workflows(repo, token, report, dry_run=dry_run)),
         ("deliveries", lambda: check_deliveries(repo, token, db, report,
                                                 now=now, dry_run=dry_run)),
-        # seen.pushed_at is UTC, and every run of KST day D (09:00–24:00 KST)
-        # writes on UTC day D, so the checked KST day is also the UTC day to read.
-        ("content", lambda: check_content(db, report, today_utc=checked_day(now),
+        ("content", lambda: check_content(db, report, day=checked_day(now),
                                           min_score=min_score)),
     ):
         try:
