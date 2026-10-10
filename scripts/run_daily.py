@@ -377,7 +377,10 @@ def main() -> int:
             db.mark_seen(p, v)
         _human_log(f"Persisted {len(persist)} verdicts to {cfg.seen_db_path}")
         settle_title_only(db, recovered, persist)
-        queued = queue_title_only_rejects(db, persist, min_score=min_score)
+        # Only daily's backfill can ever recover (and expire) a queued paper;
+        # with it off, the queue would just grow.
+        queued = (queue_title_only_rejects(db, persist, min_score=min_score)
+                  if cfg.abstract_backfill_enabled else 0)
         if queued:
             _human_log(f"  {queued} rejects were judged title-only — queued for "
                        f"a second look once an abstract appears")

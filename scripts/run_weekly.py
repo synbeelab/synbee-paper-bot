@@ -327,7 +327,10 @@ def main() -> int:
         _log(f"Persisted {len(persist)} verdicts to seen.db")
         # Weekly is where most title-only rejects come from (Cell Press and
         # Trends send Crossref no abstract). The daily run re-checks them.
-        queued = queue_title_only_rejects(db, persist, min_score=min_score)
+        # Only daily's backfill can ever recover (and expire) a queued paper;
+        # with it off, the queue would just grow.
+        queued = (queue_title_only_rejects(db, persist, min_score=min_score)
+                  if cfg.abstract_backfill_enabled else 0)
         if queued:
             _log(f"  {queued} rejects were judged title-only — queued for a "
                  f"second look once an abstract appears")

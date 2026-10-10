@@ -30,6 +30,8 @@ concurrency:
 
 jobs:
   dispatch:
+    # 브랜치 삭제도 push 이벤트다(head_commit 없음) — 그건 kick이 아니다.
+    if: ${{ !github.event.deleted }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -42,13 +44,23 @@ jobs:
           set -u
           # 허용 목록 밖의 이름은 무시한다 — 커밋 메시지는 입력이지 명령이 아니다.
           targets=""
-          for word in $(printf '%s' "$MESSAGE" | head -n1 | tr -c 'a-z-' ' '); do
+          for word in $(printf '%s' "$MESSAGE" | head -n1 | tr 'A-Z' 'a-z' | tr -c 'a-z-' ' '); do
             case "$word" in
               daily|weekly|toc-ping) targets="$targets $word" ;;
             esac
           done
           if [ -z "$targets" ]; then
-            echo "::error::no known target in '$MESSAGE' (daily|weekly|toc-ping)"
+            # 메시지 자체는 찍지 않는다 — '::'·개행으로 워크플로 명령을 주입할 수 있다.
+            echo "::error::no known target in the commit message (daily|weekly|toc-ping)"
+            exit 1
+          fi
+          # daily와 weekly는 같은 seen.db 캐시를 restore/save한다(weekly.yml 상단 주석).
+          # 동시에 띄우면 늦게 save한 쪽이 이겨 중복 게시나 기록 유실이 난다.
+          # 순서는 루틴 시각(07:45 daily / 09:25 weekly)이 보장하므로 한 push엔 하나만.
+          case " $targets " in *" daily "*) has_daily=1 ;; *) has_daily=0 ;; esac
+          case " $targets " in *" weekly "*) has_weekly=1 ;; *) has_weekly=0 ;; esac
+          if [ "$has_daily" = 1 ] && [ "$has_weekly" = 1 ]; then
+            echo "::error::daily and weekly share seen.db - kick them in separate pushes"
             exit 1
           fi
           failed=0
