@@ -275,11 +275,30 @@ Elsevier는 Crossref에 abstract를 아예 예치하지 않는다. 일간 봇도
 
 `synbee_bot/abstracts.py`가 DOI로 Europe PMC를 조회해 채운다. 누락 DOI 21건
 표본에서 13건(62%) 복구 — Cell Press 계열은 거의 다 되고, 갓 나온 Nature
-Communications·iScience는 PMC 색인 전이라 실패한다. **실패한 논문은 seen 처리되지
-않으므로 다음 런이 다시 시도한다.**
+Communications·iScience는 PMC 색인 전이라 실패한다.
+
+**정정 (2026-10-10):** 여기 원래 "실패한 논문은 seen 처리되지 않으므로 다음 런이 다시
+시도한다"고 적혀 있었지만 틀렸다. 초록 없이 판정된 NO도 seen에 기록됐고, 이후 PubMed가
+초록과 함께 같은 DOI를 보내도 DOI dedup이 버렸다. weekly의 28~43%(10/3 172/617편,
+9/26 292/679편)가 이렇게 제목 한 번으로 최종 판정되고 있었다. 이제는
+`title_only_rejects` 큐(`synbee_bot/rejudge.py`)에 들어가고, daily가 매일
+① 그날 수집분(dedup이 버리려던 PubMed 사본) ② Europe PMC 순으로 초록을 찾아 생기면
+재판정·게시한다. 30일(`abstract_backfill.rejudge_days`) 동안 안 생기면 포기한다.
 
 입력 토큰이 늘지만 입력은 콜당 비용의 ~7%뿐이라 실질 증가는 월 $0.5 수준이다.
 Batch 절감액($7.9/월)의 6%로 사는 recall 개선.
+
+## 정시 배달 — kick (2026-10-10)
+
+GitHub schedule 이벤트는 갈수록 늦다. daily 07:47 KST 크론이 10월 들어 10:49~11:34에,
+weekly 09:30 크론이 13:46~14:33에 도착했다. 크론 시각을 당겨도 소용없다.
+
+그래서 claude.ai 클라우드 루틴(정시 +10분 내 실행)이 `claude/kick` 브랜치에 빈 커밋을
+force-push하고, push 이벤트로 즉시 도는 `kick.yml`이 main의 워크플로를
+`kick=true`로 dispatch한다. 커밋 메시지(`kick: daily`, `kick: weekly toc-ping`)가
+대상을 정한다. guard는 kick 실행을 schedule로 취급하므로(`GUARD_EVENT`) 이미 배달된
+날의 두 번째 kick이나 늦게 온 GitHub 크론은 그냥 넘어간다. 기존 크론은 kick이 실패한
+날의 백업이다. 루틴 ID는 memory/운영 메모 참조.
 
 ## 사전 드롭은 여기 한 곳뿐 (`prefilter.py`)
 
