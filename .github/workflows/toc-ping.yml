@@ -17,6 +17,12 @@ on:
     - cron: "23 2 * * 6"      # Sat 11:23 KST
     - cron: "23 5 * * 6"      # Sat 14:23 KST
   workflow_dispatch:
+    inputs:
+      kick:
+        description: "kick.yml이 보낸 정시 실행 (guard가 schedule로 취급)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -50,6 +56,7 @@ jobs:
         env:
           WORKFLOW_FILE: "toc-ping.yml"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GUARD_EVENT: ${{ inputs.kick && 'schedule' || '' }}
         run: python3 scripts/catchup_guard.py
 
   ping:

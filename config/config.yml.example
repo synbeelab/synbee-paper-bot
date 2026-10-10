@@ -49,6 +49,11 @@ llm_filter:
 abstract_backfill:
   enabled: true
   timeout_seconds: 30
+  # 그래도 abstract 없이(제목만으로) 탈락한 논문은 큐에 넣고, 데일리가 매일
+  # abstract가 생겼는지 다시 본다. 생기면 abstract로 재판정·게시. 이 일수가
+  # 지나면 포기한다(Europe PMC 색인은 보통 1~3주). 2026-10-10 실측: weekly의
+  # 28~43%가 제목만으로 판정되고 있었다. 근거는 synbee_bot/rejudge.py.
+  rejudge_days: 30
 # 2026-08-30 실측(ToC sweep 1주, 848편): 18편(2.1%)이 Author Correction·
 # Retraction Note 같은 비논문 항목이었다. 절대 YES가 될 수 없으므로 LLM에
 # 보내지 않는다. 2026-09-05 실측: score 7로 게시된 "Correction to ..." 1건.

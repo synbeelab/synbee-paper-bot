@@ -425,3 +425,35 @@ def test_cli_runs_anyway_when_the_decision_itself_explodes(tmp_path, monkeypatch
 
     assert cli.main() == 0
     assert out.read_text(encoding="utf-8").strip() == "should_run=true"
+
+
+def test_a_kick_dispatch_stands_down_like_a_schedule_once_delivered(tmp_path, monkeypatch):
+    """kick.yml dispatches are the schedule on time — not a human asking.
+
+    A retried kick (or a kick after the late GitHub cron already delivered)
+    must not post the day twice. A plain manual dispatch still always runs.
+    """
+    out = tmp_path / "gh_output"
+    for key, value in {
+        "WORKFLOW_FILE": "daily.yml",
+        "GITHUB_REPOSITORY": "synbeelab/synbee-paper-bot",
+        "GITHUB_TOKEN": "t0ken",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GUARD_EVENT": "schedule",
+        "GITHUB_RUN_ID": "778",
+        "GITHUB_OUTPUT": str(out),
+    }.items():
+        monkeypatch.setenv(key, value)
+    cli = _load_guard_cli()
+    delivered = [{"id": 100, "conclusion": "success",
+                  "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z")}]
+    monkeypatch.setattr(cli, "fetch_successful_runs", lambda *a, **k: delivered)
+
+    assert cli.main() == 0
+    assert out.read_text(encoding="utf-8").strip() == "should_run=false"
+
+    # An empty override (what a schedule or a manual run passes) changes nothing.
+    monkeypatch.setenv("GUARD_EVENT", "")
+    out.write_text("", encoding="utf-8")
+    assert cli.main() == 0
+    assert out.read_text(encoding="utf-8").strip() == "should_run=true"

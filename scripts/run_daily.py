@@ -38,6 +38,10 @@ from synbee_bot.dedup import drop_known_dois, drop_known_titles, merge_by_doi  #
 from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.prefilter import drop_non_articles  # noqa: E402
+from synbee_bot.rejudge import (  # noqa: E402
+    DEFAULT_MAX_AGE_DAYS, queue_title_only_rejects, recover_title_only,
+    settle_title_only,
+)
 from synbee_bot.slack_dispatch import (  # noqa: E402
     make_slack_client, post_papers, post_source_alert, post_summary,
 )
@@ -208,6 +212,18 @@ def main() -> int:
     new_papers = drop_known_titles(new_papers, db.title_index())
     if len(new_papers) != before:
         _human_log(f"  title-level dedup vs seen.db (DOI-less records): -{before - len(new_papers)}")
+    # Rejects judged on their title alone come back once an abstract exists —
+    # often it is sitting in `flat` right now, as the PubMed copy the DOI
+    # dedup above just discarded. See synbee_bot/rejudge.py.
+    recovered: list[Paper] = []
+    if cfg.abstract_backfill_enabled:
+        recovered = recover_title_only(
+            db, collected=flat,
+            max_age_days=getattr(cfg, "abstract_rejudge_days", DEFAULT_MAX_AGE_DAYS),
+            timeout=cfg.abstract_backfill_timeout, expire=not args.dry_run,
+            log=_human_log)
+        queued_ids = {p.id for p in new_papers}
+        new_papers = new_papers + [p for p in recovered if p.id not in queued_ids]
     # 카드가 "중복 제거 후 N편"이라고 말하므로 그 N을 여기서 붙잡아 둔다.
     # 아래 prefilter가 new_papers를 재할당하기 때문에, zero 카드에서
     # len(new_papers)를 쓰면 prefilter가 버린 만큼 작게 보고된다.
@@ -360,6 +376,14 @@ def main() -> int:
         for p, v in persist:
             db.mark_seen(p, v)
         _human_log(f"Persisted {len(persist)} verdicts to {cfg.seen_db_path}")
+        settle_title_only(db, recovered, persist)
+        # Only daily's backfill can ever recover (and expire) a queued paper;
+        # with it off, the queue would just grow.
+        queued = (queue_title_only_rejects(db, persist, min_score=min_score)
+                  if cfg.abstract_backfill_enabled else 0)
+        if queued:
+            _human_log(f"  {queued} rejects were judged title-only — queued for "
+                       f"a second look once an abstract appears")
         if retry:
             _human_log(
                 f"↻ {len(retry)} papers left unseen for retry next run "

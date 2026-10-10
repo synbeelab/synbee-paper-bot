@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS source_watermark (
     last_success TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Papers rejected on their TITLE ALONE (no abstract reached the filter). They
+-- are in `seen` like any other reject, so no source can bring them back — this
+-- queue is the only way they are ever judged again. See synbee_bot/rejudge.py.
+CREATE TABLE IF NOT EXISTS title_only_rejects (
+    paper_id TEXT PRIMARY KEY,
+    doi TEXT NOT NULL,
+    paper_json TEXT NOT NULL,
+    first_judged TEXT NOT NULL
+);
 """
 
 
@@ -172,6 +182,46 @@ class SeenDB:
                  updated_at = CURRENT_TIMESTAMP""",
             (source, day.isoformat()),
         )
+        self.conn.commit()
+
+    # --- title-only rejects awaiting an abstract (see rejudge.py) ---------
+    def queue_title_only(self, paper: Paper, day: dt.date | None = None) -> None:
+        """Remember a paper that was rejected without its abstract.
+
+        INSERT OR IGNORE keeps the ORIGINAL first_judged date, so a paper that
+        keeps coming back title-only still ages out on schedule.
+        """
+        if not paper.doi:
+            return
+        day = day or dt.date.today()
+        self.conn.execute(
+            """INSERT OR IGNORE INTO title_only_rejects
+               (paper_id, doi, paper_json, first_judged) VALUES (?,?,?,?)""",
+            (paper.id, paper.doi, json.dumps(paper.to_dict(), ensure_ascii=False),
+             day.isoformat()),
+        )
+        self.conn.commit()
+
+    def list_title_only(self) -> list[tuple[Paper, dt.date]]:
+        """Every queued title-only reject, with the day it was first judged."""
+        out: list[tuple[Paper, dt.date]] = []
+        for row in self.conn.execute(
+                "SELECT paper_json, first_judged FROM title_only_rejects"):
+            try:
+                paper = Paper(**json.loads(row["paper_json"]))
+                day = dt.date.fromisoformat(row["first_judged"])
+            except (TypeError, ValueError):
+                continue   # a corrupt row must not take the run down
+            out.append((paper, day))
+        return out
+
+    def drop_title_only(self, paper_ids: Iterable[str]) -> None:
+        ids = list(paper_ids)
+        for start in range(0, len(ids), 400):   # SQLite parameter limit
+            chunk = ids[start:start + 400]
+            self.conn.execute(
+                f"DELETE FROM title_only_rejects WHERE paper_id IN "
+                f"({','.join('?' * len(chunk))})", chunk)
         self.conn.commit()
 
     def queue_for_wiki(self, paper_id: str) -> None:

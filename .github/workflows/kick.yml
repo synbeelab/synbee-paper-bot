@@ -1,0 +1,71 @@
+name: Kick (on-time trigger)
+
+# GitHub의 schedule 이벤트는 이 계정에서 점점 늦어지고 있다. 07:47 KST 크론의
+# 실제 도착: 9월 중순 09:20~09:55 → 2026-10-06~09 10:49~11:34 KST. weekly는
+# 09:30 예약이 13:46~14:33에 왔다. 크론을 앞당겨도 소용없다(daily.yml 주석).
+#
+# 그래서 정시 트리거를 GitHub 바깥에 둔다. claude.ai 클라우드 루틴(정시 +10분 이내
+# 실측)이 `claude/kick` 브랜치에 빈 커밋을 push하면, push 이벤트는 스케줄 큐를 타지
+# 않으므로 이 워크플로가 즉시 돌아 main의 워크플로를 dispatch한다.
+#   - 루틴은 비밀키가 필요 없다(레포 push 권한만). GITHUB_TOKEN의 dispatch는
+#     GitHub가 허용하는 유일한 자기 트리거다(watchdog도 같은 방식).
+#   - 커밋 메시지가 무엇을 깨울지 정한다: "kick: daily", "kick: weekly toc-ping".
+#   - 대상은 `kick=true`로 받아 guard가 schedule처럼 판정한다 → 이미 배달된 날
+#     두 번째 kick이나 늦게 온 GitHub 크론은 조용히 넘어간다. 기존 크론은 kick이
+#     실패한 날의 백업으로 그대로 둔다.
+#
+# 루틴: trig_… "SynBEE paper kick" (README 참조). 브랜치는 매번 main에서 새로
+# 만들어 force-push하므로 이 파일의 최신본이 항상 실린다.
+
+on:
+  push:
+    branches: ["claude/kick"]
+
+permissions:
+  actions: write    # workflow_dispatch
+
+concurrency:
+  group: synbee-kick
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    # 브랜치 삭제도 push 이벤트다(head_commit 없음) — 그건 kick이 아니다.
+    if: ${{ !github.event.deleted }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch the workflows named in the commit message
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -u
+          # 허용 목록 밖의 이름은 무시한다 — 커밋 메시지는 입력이지 명령이 아니다.
+          targets=""
+          for word in $(printf '%s' "$MESSAGE" | head -n1 | tr 'A-Z' 'a-z' | tr -c 'a-z-' ' '); do
+            case "$word" in
+              daily|weekly|toc-ping) targets="$targets $word" ;;
+            esac
+          done
+          if [ -z "$targets" ]; then
+            # 메시지 자체는 찍지 않는다 — '::'·개행으로 워크플로 명령을 주입할 수 있다.
+            echo "::error::no known target in the commit message (daily|weekly|toc-ping)"
+            exit 1
+          fi
+          # daily와 weekly는 같은 seen.db 캐시를 restore/save한다(weekly.yml 상단 주석).
+          # 동시에 띄우면 늦게 save한 쪽이 이겨 중복 게시나 기록 유실이 난다.
+          # 순서는 루틴 시각(07:45 daily / 09:25 weekly)이 보장하므로 한 push엔 하나만.
+          case " $targets " in *" daily "*) has_daily=1 ;; *) has_daily=0 ;; esac
+          case " $targets " in *" weekly "*) has_weekly=1 ;; *) has_weekly=0 ;; esac
+          if [ "$has_daily" = 1 ] && [ "$has_weekly" = 1 ]; then
+            echo "::error::daily and weekly share seen.db - kick them in separate pushes"
+            exit 1
+          fi
+          failed=0
+          for t in $targets; do
+            echo "dispatch $t.yml (kick=true)"
+            gh workflow run "$t.yml" --ref main -f kick=true || failed=1
+          done
+          exit $failed
