@@ -32,6 +32,11 @@ on:
         type: boolean
         required: false
         default: false
+      kick:
+        description: "kick.yml이 보낸 정시 실행 (guard가 schedule로 취급)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -64,6 +69,7 @@ jobs:
         env:
           WORKFLOW_FILE: "weekly.yml"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GUARD_EVENT: ${{ inputs.kick && 'schedule' || '' }}
         run: python3 scripts/catchup_guard.py
 
   run:

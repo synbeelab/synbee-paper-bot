@@ -18,7 +18,10 @@ returns entries with no summary at all (see sources.py).
 Europe PMC carries the abstract for most of them and is free and unauthenticated.
 Spot-checked over 21 of the missing DOIs: 13 recovered (Cell Press near-complete;
 Nature Communications and iScience miss only because PMC has not indexed them
-yet — a later run picks them up, which is why this never marks anything seen).
+yet). A paper still title-only here is judged anyway and, if rejected, marked
+seen like any reject — so no later SOURCE can bring it back. Only the queue in
+rejudge.py gives it a second, abstract-backed judgement (until 2026-10-10 this
+said "a later run picks them up"; none did).
 
 Cost note: this ADDS input tokens. That is the right direction. Input is ~7% of
 what a filter call costs (the 1,384 thinking tokens dominate), so filling 59% of

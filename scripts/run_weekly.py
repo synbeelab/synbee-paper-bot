@@ -45,6 +45,7 @@ from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
 from synbee_bot.gemini_batch import filter_batch_offline  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.prefilter import drop_non_articles  # noqa: E402
+from synbee_bot.rejudge import queue_title_only_rejects  # noqa: E402
 from synbee_bot.slack_dispatch import (  # noqa: E402
     make_slack_client, post_papers, post_source_alert, post_summary,
 )
@@ -324,6 +325,12 @@ def main() -> int:
         for p, v in persist:
             db.mark_seen(p, v)
         _log(f"Persisted {len(persist)} verdicts to seen.db")
+        # Weekly is where most title-only rejects come from (Cell Press and
+        # Trends send Crossref no abstract). The daily run re-checks them.
+        queued = queue_title_only_rejects(db, persist, min_score=min_score)
+        if queued:
+            _log(f"  {queued} rejects were judged title-only — queued for a "
+                 f"second look once an abstract appears")
         if retry:
             error_count = sum(1 for _, v in results if v.is_error)
             _log(f"↻ {len(retry)} papers left unseen for retry next run "

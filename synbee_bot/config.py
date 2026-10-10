@@ -68,6 +68,7 @@ class Config:
     # Pre-LLM shaping (see abstracts.py / prefilter.py)
     abstract_backfill_enabled: bool
     abstract_backfill_timeout: int
+    abstract_rejudge_days: int
     prefilter_non_articles: bool
 
     # Weekly journal-sweep digest (delta vs daily)
@@ -157,6 +158,7 @@ def load_config(config_path: Path | None = None) -> Config:
         slack_max_posts=_optional_cap(slack.get("max_posts_per_run")),
         abstract_backfill_enabled=bool(backfill.get("enabled", True)),
         abstract_backfill_timeout=int(backfill.get("timeout_seconds", 30)),
+        abstract_rejudge_days=int(backfill.get("rejudge_days", 30)),
         prefilter_non_articles=bool(prefilter.get("non_articles", True)),
         weekly_enabled=bool(weekly.get("enabled", True)),
         weekly_channel=str(weekly.get("channel", "")),

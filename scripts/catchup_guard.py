@@ -12,6 +12,10 @@ Env:
   GITHUB_REPOSITORY   "owner/repo"    (provided by Actions)
   GITHUB_TOKEN        needs `actions: read`
   GITHUB_EVENT_NAME   "schedule" | "workflow_dispatch" | ...
+  GUARD_EVENT         optional override of GITHUB_EVENT_NAME. kick.yml's
+                      dispatches set it to "schedule": they ARE the schedule,
+                      just on time, so a second kick on a delivered day must
+                      stand down exactly like a catch-up cron does.
   GITHUB_RUN_ID       this run, so it never blocks itself
   GITHUB_OUTPUT       Actions output file
 """
@@ -51,7 +55,8 @@ def main() -> int:
     workflow_file = os.environ.get("WORKFLOW_FILE", "")
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     token = os.environ.get("GITHUB_TOKEN", "")
-    event_name = os.environ.get("GITHUB_EVENT_NAME", "schedule")
+    event_name = (os.environ.get("GUARD_EVENT")
+                  or os.environ.get("GITHUB_EVENT_NAME", "schedule"))
     run_id = _int_or_none(os.environ.get("GITHUB_RUN_ID", ""))
 
     if not (workflow_file and repo and token):
