@@ -7,6 +7,10 @@ name: Filter prompt re-judge (manual)
 on:
   workflow_dispatch:
     inputs:
+      ref:
+        description: "Branch holding the candidate prompt (default: this ref)"
+        required: false
+        default: ""
       since:
         description: "Only replay verdicts recorded on or after this date"
         required: false
@@ -27,7 +31,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      # workflow_dispatch only fires for workflows on the default branch, so
+      # the candidate prompt lives on a branch this job checks out by name.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Report what is being evaluated
+        run: |
+          echo "ref: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
 
       - name: Set up Python
         uses: actions/setup-python@v5
