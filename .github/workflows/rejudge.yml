@@ -1,0 +1,82 @@
+name: Filter prompt re-judge (manual)
+
+# Replays stored verdicts through a candidate filter prompt so a prompt change
+# can be measured before it reaches the digest. Reads seen.db from the shared
+# cache and never writes it back, and never posts to Slack.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch holding the candidate prompt (default: this ref)"
+        required: false
+        default: ""
+      since:
+        description: "Only replay verdicts recorded on or after this date"
+        required: false
+        default: "2026-09-06"
+      parallel:
+        description: "Concurrent Gemini calls"
+        required: false
+        default: "8"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  rejudge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # workflow_dispatch only fires for workflows on the default branch, so
+      # the candidate prompt lives on a branch this job checks out by name.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Report what is being evaluated
+        run: |
+          echo "ref: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Restore only — this job must not become the newest cache entry, or it
+      # would hand the daily run a database it never wrote.
+      - name: Restore seen.db
+        uses: actions/cache/restore@v4
+        with:
+          path: data/seen.db
+          key: synbee-seen-rejudge-${{ github.run_id }}
+          restore-keys: |
+            synbee-seen-
+
+      - name: Re-judge with the candidate prompt
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PYTHONIOENCODING: utf-8
+        run: |
+          test -f data/seen.db || { echo "❌ no seen.db in cache"; exit 1; }
+          python scripts/rejudge_compare.py \
+            --since "${{ inputs.since }}" \
+            --parallel "${{ inputs.parallel }}" \
+            --out rejudge_report.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rejudge-report
+          path: rejudge_report.json
+          if-no-files-found: warn
