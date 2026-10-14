@@ -52,18 +52,33 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 **해당하면 통과시킵니다.** 각 범주의 괄호 안 조건을 만족해야 하고, 만족하면 다른 NO 규칙
 (비미생물·생태학·바이러스학·계산 단독 등)보다 이 목록이 **우선**합니다.
 
+**모든 범주에 걸리는 전제 두 가지** — 둘 중 하나라도 어긋나면 범주를 적용하지 않습니다.
+
+- **원저 논문이나 리뷰여야 합니다.** News & Views, Preview, Comment, Research Highlight,
+  Editorial, 부고, 학술 뉴스 기사는 어느 범주에도 해당하지 않습니다. 본문이 남의 논문을
+  소개·논평하는 글이면 NO·1~3점입니다.
+- **대상이 미생물·효소·유전자 발현 도구·생균이어야 합니다.** 질환 기전 규명, 약물 작용점
+  탐색, 숙주 생리, 동물·곤충 행동이 논문의 목적이면, 거기 미생물이나 효소가 등장하더라도
+  범주를 적용하지 않습니다.
+
 1. **비미생물 시스템의 도구·전략 개발** — 포유류·CHO·식물·동물세포에서 수행했더라도,
    만든 것이 **대사공학·게놈 편집·유전자 발현 조절의 도구나 전략 자체**이면 YES.
    (그 시스템에서의 생물학적 발견이면 여전히 NO.)
    예: 다중화 대사공학 기법, 표적 DNA 삽입용 retrotransposon 공학, CHO 글리코엔지니어링.
 2. **대사 분석·모델링** — ¹³C-MFA, 속도론 모델, 게놈 수준 대사 모델(GEM), flux balance
    analysis, 대사 재배선 규명. 균주 개량의 직전 단계이므로 엔지니어링이 없어도 YES.
-3. **미생물 상호작용·합성 군집** — cross-feeding, siderophore 교환, 정의된 컨소시엄(SynCom),
-   군집 공존·분업 기전. **기전이나 설계 원리**를 다루면 YES.
-   (지역 미생물 군집을 서술하기만 한 환경 서베이는 여전히 NO.)
+3. **미생물 간 대사 상호작용·합성 군집** — cross-feeding, siderophore 교환, 정의된
+   컨소시엄(SynCom)의 구축·설계, 배양 가능한 소수 균주 사이의 공존·분업 **기전**.
+   분자 수준 기전이나 설계 원리를 다룰 때만 YES.
+   (**숙주·환경 미생물 군집의 조성·모집·생태 전략은 NO입니다** — 근권·장내·해양·토양
+   마이크로바이옴의 구성과 그 생태적 해석은 군집 조성 서술이지 설계 원리가 아닙니다.
+   숙주 표현형과 마이크로바이옴을 연관지은 연구도 NO.)
 4. **단백질·효소의 계산 설계 도구** — de novo 설계, 단백질 언어모델, 생성모델 기반 서열
    설계, 결합부위·활성 예측, 지향성 진화 인실리코 플랫폼. **도구 자체가 결과물**이면
-   실험 검증이 없어도 YES. (특정 질환 표적 신약 발굴에만 쓰인 경우는 NO.)
+   실험 검증이 없어도 YES.
+   (**단백질·효소 서열이나 구조를 다루는 도구에 한정합니다.** 인간 유전체 변이 예측,
+   단일세포·전사체 분석, 서열 정렬·어셈블리·변이 검출처럼 미생물 엔지니어링과 무관한
+   범용 생명정보 도구는 NO. 특정 질환 표적 신약 발굴에만 쓰인 경우도 NO.)
 5. **무세포계·합성세포** — 무세포 발현 시스템, 추출물 공학, 합성세포·최소세포 구축.
 6. **파지 생물학·항파지 방어 시스템** — 파지 방어 시스템 발굴·기전, 파지 수용체·tail fiber
    공학, 파지 치료 설계. 세균 면역계는 미션 2 도구의 공급원이므로 YES.
@@ -76,10 +91,17 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
    *Journal of Natural Products*의 전형적인 신규 화합물 보고가 여기 해당합니다.)
 9. **효소 기전·구조-기능·기질범위** — 촉매 기전 규명, 활성부위 구조-기능 관계, 기질 범위
    확장, 열안정성·최적온도 분석. 합리적 설계의 입력값이므로 개량이 없어도 YES.
+   (**효소의 촉매 작용 자체가 논점일 때만입니다.** 그 효소를 약물 표적으로 보거나, 질환·
+   병원성에서의 역할을 규명한 연구는 NO.)
 10. **분자생물학 방법론·자동화** — DNA 조립·클로닝·벡터 시스템, 돌연변이 유발법, 고처리량
-    스크리닝 플랫폼, 실험실 자동화·바이오파운드리.
+    스크리닝 플랫폼, 실험실 자동화·바이오파운드리, 천연물 탐색·구조 동정(dereplication)
+    워크플로.
+    (**균주·유전자·효소를 다루는 실험 방법에 한정합니다.** 현미경·이미징 기법, 질량분석
+    측정법, 시퀀싱 플랫폼처럼 분야를 가리지 않는 범용 측정 기술은 NO.)
 11. **C1·가스 발효·전기미생물** — 메탄·메탄올·포름산·CO₂ 기반 미생물 전환, 전기미생물
     합성, 메탄영양·독립영양 균주 및 그 생물반응기 공정.
+    (**기질이 C1·가스·전극일 때만입니다.** 당 기질 발효에서 배지 첨가물·배양 조건만
+    바꾼 연구는 NO 목록의 "발효 공정 최적화" 그대로입니다.)
 
 **이 11개는 열거된 범위까지만입니다.** 범주 이름이 비슷하다는 이유로 확장하지 마세요.
 "이것도 넓게 보면 도구"라는 식의 추론은 제1원칙이 금지하는 전이 가능성 논증이며,
@@ -112,6 +134,11 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
   미생물 엔지니어링과 무관하게 쓰이는 분석 도구
 - **논문이 아닌 항목**: 권두자료(Issue Information, Masthead, Table of Contents,
   "Subscription and Copyright information"), 저자 색인, 표지 소개, 부고
+- **논평·소개 글**: News & Views, Preview, Comment, Research Highlight, Editorial,
+  학술 뉴스 기사. 남의 논문을 소개하는 글은 주제가 미션 안이어도 NO입니다
+  (제목만 보면 원저와 구별이 어렵습니다 — 두세 단어짜리 비유적 제목, 물음표로 끝나는
+  제목, *Nature*·*Nature Microbiology*·*Cell Host & Microbe*의 아주 짧은 제목을
+  의심하세요).
 - **리뷰**: 미션 주제를 정면으로 다루는 최신 리뷰만 YES. "인접 분야 리뷰"라는 이유로
   통과시키지 마세요 — 리뷰도 위 제1원칙을 똑같이 적용합니다.
 
@@ -165,6 +192,15 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 | High temperature ligation enables in vitro assembly of eukaryotic genes | bioRxiv | **YES · M2 · 6** | 경계 10 — DNA 조립법 |
 | Strategies to enhance mass transfer in methanotrophic bioreactors | Biotechnol Adv | **YES · M1 · 6** | 경계 11 — C1 전환 공정 |
 | Tonakiamides A and B, antitrypanosomal lipopeptides from a marine cyanobacterium | J Nat Prod | **NO · 3** | 경계 8 아님 — 화합물 분리·활성만, 효소·유전자 없음 |
+| Family matters in the root microbiota | Nat Microbiol | **NO · 2** | 전제 위반 — News & Views, 원저가 아님 |
+| Functional capacities drive recruitment of bacteria into plant root microbiota | Nat Microbiol | **NO · 3** | 경계 3 아님 — 근권 군집의 모집·조성, 설계 원리 아님 |
+| Cross-feeding enables robust coexistence between four bacterial species | PNAS | **YES · M3 · 6** | 경계 3 — 배양 가능한 소수 균주의 공존 기전 |
+| Predicting genome-wide functional constraints with GPN-Star | Nature | **NO · 3** | 경계 4 아님 — 인간 유전체 변이 예측, 범용 생명정보 |
+| Bacterial NDH-1 is a key gut target of metformin mediating its antidiabetic effects | bioRxiv | **NO · 3** | 전제 위반 — 목적이 약물 작용점 규명 |
+| Microbial signaling coordinates group oviposition in migratory locusts | Cell | **NO · 2** | 전제 위반 — 곤충 행동 연구 |
+| Curcumin enhances alcoholic fermentation in yeast by promoting osmotic stress adaptation | bioRxiv | **NO · 4** | 경계 11 아님 — 당 기질에 첨가물만 바꾼 발효 조건 최적화 |
+| A simple platform for in situ DNA-PAINT optimization enables improved multiplexed super-resolution | bioRxiv | **NO · 3** | 경계 10 아님 — 범용 이미징 기법 |
+| Cryo-EM structures of *Candida albicans* chitin synthase Chs1 reveal a druggable site | Nat Microbiol | **NO · 3** | 경계 9 아님 — 효소를 항진균 표적으로 본 연구 |
 | Dosing and delivery of bacteriophage therapy in a murine wound infection model | Nat Commun | **NO · 3** | 경계 6 아님 — 동물 효능 시험 |
 | SVPG: a pangenome-based structural variant detection approach | Nat Methods | **NO · 3** | 경계 4 아님 — 범용 생명정보 도구 |
 | Recombinant thermotolerant alkaline lipase from *Lysinibacillus* for detergent use | Microb Cell Fact | **NO · 4** | 야생형 효소의 단순 응용, 개량 없음 |
