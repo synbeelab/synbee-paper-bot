@@ -156,3 +156,14 @@ journals:
     active: true
     datefield: created
     note: "미배정 22%"
+
+  # --- AAAS (2026-10-14 추가) -------------------------------------------------
+  # 이메일 자체는 호 전수(12(33) 85=85)다. 넣은 이유는 이메일이 ToC 루틴에 한 번도
+  # 안 잡혔기 때문이다: 발신 announcements@(Science/STM은 alerts@), 제목
+  # "Science Advances Notification for ..."라 루틴 검색식의 주소·제목 키워드 어디에도
+  # 안 걸려 2026-08 이후 11호가 전부 미처리였다. 그동안 경로는 키워드 게이트 PubMed뿐.
+  # AAAS는 online-first 미배정 0%라 pub 날짜로 충분(2026-09-28~10-04 pub 83 = created 83).
+  - name: "Sci Adv"
+    issn: "2375-2548"
+    active: true
+    note: "주당 ~83편. ToC 루틴 미수집 → 2026-10-14 스윕 편입"
