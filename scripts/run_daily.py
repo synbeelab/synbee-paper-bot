@@ -352,8 +352,9 @@ def main() -> int:
             }
             _human_log(f"Posting {len(passing)} to Slack channel {target}…")
             posted, post_failures = post_papers(cfg.slack_bot_token, target, passing,
-                                                summary=summary)
-            _human_log(f"Posted {posted} messages ({len(post_failures)} failed).")
+                                                summary=summary,
+                                                card_min_score=cfg.slack_card_min_score)
+            _human_log(f"Posted {posted} papers ({len(post_failures)} failed).")
     elif args.dry_run:
         _human_log("Dry run — Slack push skipped, DB not updated.")
 

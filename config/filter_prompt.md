@@ -53,19 +53,9 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 (비미생물·생태학·바이러스학·계산 단독 등)보다 이 목록이 **우선**합니다.
 
 1. **비미생물 시스템의 도구·전략 개발** — 포유류·CHO·식물·동물세포에서 수행했더라도,
-   **만든 것이 도구·전략 자체**이면 수행 시스템을 불문하고 YES. 대사공학·게놈 편집·
-   유전자 발현 조절에 한정하지 않습니다. 단백질·효소 공학, 계보 기록(recording) 장치,
-   국소화·활성 제어 모듈, 고처리량 스크리닝 플랫폼, 전달·표지 모듈이 모두 해당합니다.
-   판단 기준은 **논문의 결과물이 재사용 가능한 도구인가**이지, 어느 세포에서 했는가가
-   아닙니다. (그 시스템에서의 **생물학적 발견**이 결과물이면 여전히 NO.)
-   예: 다중화 대사공학 기법, 표적 DNA 삽입용 retrotransposon 공학, CHO 글리코엔지니어링,
-   세포 계보를 기록하는 DNA 기록 장치, 경로 전역 base-editing 스크린, 광제어 miniprotein.
-
-   **단, 그 도구는 유전자·전사체·단백질/효소·대사·세포를 조작하거나 측정하는 것이어야
-   합니다.** 새로운 분자를 만들었다는 사실만으로는 부족합니다 — 펩타이드 자기조립,
-   나노구조·나노섬유, 하이드로젤·고분자 소재, 표면 코팅처럼 **재료가 결과물**인 연구는
-   NO 목록의 "재료·광물리·나노소재"가 우선하며, 범주 1은 적용되지 않습니다.
-   (그 소재가 유전자 전달·효소 고정화 같은 **생물학적 조작 기능**을 수행할 때만 범주 1입니다.)
+   만든 것이 **대사공학·게놈 편집·유전자 발현 조절의 도구나 전략 자체**이면 YES.
+   (그 시스템에서의 생물학적 발견이면 여전히 NO.)
+   예: 다중화 대사공학 기법, 표적 DNA 삽입용 retrotransposon 공학, CHO 글리코엔지니어링.
 2. **대사 분석·모델링** — ¹³C-MFA, 속도론 모델, 게놈 수준 대사 모델(GEM), flux balance
    analysis, 대사 재배선 규명. 균주 개량의 직전 단계이므로 엔지니어링이 없어도 YES.
 3. **미생물 상호작용·합성 군집** — cross-feeding, siderophore 교환, 정의된 컨소시엄(SynCom),
@@ -92,14 +82,9 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 11. **C1·가스 발효·전기미생물** — 메탄·메탄올·포름산·CO₂ 기반 미생물 전환, 전기미생물
     합성, 메탄영양·독립영양 균주 및 그 생물반응기 공정.
 
-**범주 2~11은 열거된 범위까지만입니다.** 범주 이름이 비슷하다는 이유로 확장하지 마세요.
-"이것도 넓게 보면 미션 재료"라는 식의 추론은 제1원칙이 금지하는 전이 가능성 논증이며,
+**이 11개는 열거된 범위까지만입니다.** 범주 이름이 비슷하다는 이유로 확장하지 마세요.
+"이것도 넓게 보면 도구"라는 식의 추론은 제1원칙이 금지하는 전이 가능성 논증이며,
 여기 명시되지 않은 유형에는 적용되지 않습니다.
-
-**범주 1은 예외로, 열거가 아니라 기준입니다.** 도구의 종류를 한정하지 않으므로
-예시에 없는 도구도 "논문의 결과물이 재사용 가능한 도구"이면 통과시킵니다. 다만 이것은
-**결과물이 도구일 때**의 규칙이지, 도구를 **써서** 생물학적 발견을 한 논문에는 적용되지
-않습니다 — 그 구분이 범주 1의 유일한 경계선입니다.
 
 ---
 
@@ -119,7 +104,7 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 - **바이러스학·병원성 기초 연구**: 숙주-병원체 상호작용, 병원균 조절 회로 규명,
   백신 **효능 시험**·항체 **역가 평가**·면역원성 임상 평가
   (단, 그 요소를 **도구로 쓰는** 연구는 미션 2, 세균의 항파지 방어계는 경계 범주 6.
-  **백신·항체를 분자 수준에서 설계·공학한 연구는 경계 범주 1·4입니다** — 삼량체화
+  **백신·항체를 분자 수준에서 설계·공학한 연구는 미션 2입니다** — 삼량체화
   도메인 설계, 항체 리크루팅 분자, mRNA 구조 기반 약독화처럼 만들어낸 분자 자체가
   결과물이면 YES.)
 - **단순 응용 사례**: 기존 균주·기존 효소를 기존 방식대로 쓴 것. 새 도구·새 개량·유의한
@@ -189,12 +174,10 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 | High temperature ligation enables in vitro assembly of eukaryotic genes | bioRxiv | **YES · M2 · 6** | 경계 10 — DNA 조립법 |
 | Strategies to enhance mass transfer in methanotrophic bioreactors | Biotechnol Adv | **YES · M1 · 6** | 경계 11 — C1 전환 공정 |
 | A Practical Guide to Dereplication in Natural Products Metabolomics | J Nat Prod | **YES · M1 · 7** | 경계 10 — 천연물 구조 동정 워크플로가 결과물 |
-| Near-infrared photochromic miniprotein enables photoacoustic molecular imaging | Nat Methods | **YES · M2 · 8** | 경계 1 — 결과물이 공학된 단백질 도구 (수행 시스템 불문) |
-| Antibody-recruiting molecules based on mimotope fusion peptides and a dimeric antibiotic | bioRxiv | **YES · M2 · 7** | 경계 1 — 설계된 분자 자체가 결과물, 백신 효능 시험이 아님 |
-| A DNA Typewriter records the cell lineage history of a mouse | Science | **YES · M2 · 7** | 경계 1 — 포유류지만 결과물이 계보 기록 장치 |
+| Antibody-recruiting molecules based on mimotope fusion peptides and a dimeric antibiotic | bioRxiv | **YES · M2 · 7** | 미션 2 — 설계된 분자가 결과물, 백신 효능 시험이 아님 |
 | Iterative dissolved-oxygen control combined with growth–production coordination | Metab Eng | **YES · M1 · 8** | 미션 1 — 생산 균주의 역가를 올리는 공정 설계 |
-| Sequence-encoded hexagonal lattices in multichannel peptide nanofibrils | Nature | **NO · 2** | 경계 1 아님 — 결과물이 자기조립 재료, 생물학적 조작 기능 없음 |
-| Random hybrid polypeptides regulate immune signaling through promiscuous binding | JACS | **NO · 2** | 경계 1 아님 — 고분자 소재의 생물활성, 도구가 아님 |
+| Sequence-encoded hexagonal lattices in multichannel peptide nanofibrils | Nature | **NO · 2** | 재료·나노소재 — 결과물이 자기조립 구조체 |
+| Random hybrid polypeptides regulate immune signaling through promiscuous binding | JACS | **NO · 2** | 재료·나노소재 — 고분자 소재의 생물활성, 도구가 아님 |
 | Tonakiamides A and B, antitrypanosomal lipopeptides from a marine cyanobacterium | J Nat Prod | **NO · 3** | 경계 8 아님 — 화합물 분리·활성만, 효소·유전자 없음 |
 | Dosing and delivery of bacteriophage therapy in a murine wound infection model | Nat Commun | **NO · 3** | 경계 6 아님 — 동물 효능 시험 |
 | SVPG: a pangenome-based structural variant detection approach | Nat Methods | **NO · 3** | 경계 4 아님 — 범용 생명정보 도구 |

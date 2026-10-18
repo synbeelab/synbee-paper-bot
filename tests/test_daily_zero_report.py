@@ -152,6 +152,7 @@ def _stub_config(rd, monkeypatch, tmp_path):
         slack_channel_test = ""
         slack_use_test = False
         slack_max_posts = None
+        slack_card_min_score = None
         pubmed_enabled = True
         biorxiv_enabled = False
         rss_enabled = False
