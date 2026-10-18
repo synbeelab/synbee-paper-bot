@@ -183,6 +183,28 @@ def test_draft_is_a_threaded_reply_with_signature():
     assert "gmail_signature" in html_part and "<b>Dr. Dongsoo Yang</b>" in html_part
 
 
+def test_closing_line_runs_straight_into_the_signature():
+    mime = _decode(build_draft_mime(make_message(), "Dear X,\n\nBody\n\nBest regards,\n", SIG))
+    plain = mime.get_body(("plain",)).get_content()
+    html_part = mime.get_body(("html",)).get_content()
+    assert "Best regards,\nDr. Dongsoo Yang" in plain.replace("\r\n", "\n")
+    assert "<div>Best regards,</div><div dir=\"ltr\" class=\"gmail_signature\"" in html_part
+
+
+def test_signed_off_body_keeps_a_gap_before_the_signature():
+    mime = _decode(build_draft_mime(make_message(), "본문\n\n양동수 드림\n", SIG))
+    plain = mime.get_body(("plain",)).get_content().replace("\r\n", "\n")
+    assert "양동수 드림\n\nDr. Dongsoo Yang" in plain
+    assert "<div><br></div><div dir=\"ltr\" class=\"gmail_signature\"" in \
+        mime.get_body(("html",)).get_content()
+
+
+def test_shipped_english_templates_end_on_best_regards():
+    templates = load_decline_config().templates["templates"]["en"]
+    for body in templates.values():
+        assert body.rstrip().endswith("\nBest regards,")
+
+
 def test_draft_prefers_reply_to_and_keeps_existing_re_prefix():
     msg = make_message(subject="RE: inquiry", extra={"Reply-To": "Real <real@uni.edu>"})
     mime = _decode(build_draft_mime(msg, "x\n", ""))

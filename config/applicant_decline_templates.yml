@@ -7,7 +7,9 @@
 # His Gmail signature is appended below each body at run time (fetched live
 # from Gmail settings; `signature_fallback` if that call fails). API-made
 # drafts get no signature otherwise — the first hand-made draft went out
-# without one.
+# without one. English bodies end on a bare "Best regards," so the signature's
+# "Dr. Dongsoo Yang" completes the closing (his request, 2026-10-14); a body
+# ending in "," gets no blank line before the signature.
 #
 # Which template each role gets (his decision, 2026-10-04):
 #   grad → secured   (이미 다 뽑았다)
@@ -48,8 +50,7 @@ templates:
       Thank you for your interest in my lab. However, as I have already secured more than enough grad student candidates for next year, I cannot consider more.
       I hope you can find better opportunities.
 
-      Best,
-      Dongsoo
+      Best regards,
     resources: |
       {salutation}
 
@@ -58,7 +59,6 @@ templates:
       I wish you the best in finding another opportunity.
 
       Best regards,
-      Dongsoo
   ko:
     secured: |
       {salutation}

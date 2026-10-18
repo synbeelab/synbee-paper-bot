@@ -281,15 +281,20 @@ def build_draft_mime(msg: GmailMessage, body_text: str, signature_html: str) -> 
         references = _one_line(msg.headers.get("References", ""))
         mime["References"] = f"{references} {original_id}".strip()
 
+    # A body ending on an open closing ("Best regards,") runs straight into the
+    # signature's name line; one already signed off ("양동수 드림") keeps a gap.
+    open_closing = body_text.rstrip().endswith(",")
     sig_text = _html_to_text(signature_html) if signature_html else ""
-    plain = body_text + (f"\n{sig_text}\n" if sig_text else "")
+    gap = "" if open_closing else "\n"
+    plain = body_text + (f"{gap}{sig_text}\n" if sig_text else "")
     body_html = "".join(
         f"<div>{html.escape(line)}</div>" if line else "<div><br></div>"
         for line in body_text.rstrip("\n").split("\n")
     )
     if signature_html:
-        body_html += ("<div><br></div><div dir=\"ltr\" class=\"gmail_signature\" "
-                      f"data-smartmail=\"gmail_signature\">{signature_html}</div>")
+        body_html += ("" if open_closing else "<div><br></div>") + (
+            "<div dir=\"ltr\" class=\"gmail_signature\" "
+            f"data-smartmail=\"gmail_signature\">{signature_html}</div>")
     mime.set_content(plain)
     mime.add_alternative(f"<div dir=\"ltr\">{body_html}</div>", subtype="html")
     return base64.urlsafe_b64encode(mime.as_bytes()).decode("ascii")
