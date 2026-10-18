@@ -139,6 +139,7 @@ def _stub_config(rd, monkeypatch, tmp_path):
         slack_enabled = True
         slack_bot_token = "xoxb-test"
         slack_max_posts = None
+        slack_card_min_score = None
         pubmed_enabled = True
         biorxiv_enabled = False
         rss_enabled = False

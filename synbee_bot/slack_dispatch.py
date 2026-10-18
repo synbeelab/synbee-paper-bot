@@ -233,11 +233,69 @@ def make_slack_client(token: str):
     return client
 
 
+# One section block holds 3000 characters; stay under it so a long run of
+# summaries never silently truncates a paper out of the list.
+BRIEF_CHARS = 2700
+# The separator is also how the caller counts papers back out of a built
+# message, so splitting on it must recover exactly the lines put in.
+BRIEF_SEP = "\n\n"
+
+
+def build_brief_blocks(items: list[tuple[Paper, Verdict]],
+                       heading: str) -> list[list[dict]]:
+    """Group the lower tier into compact list messages, one line per paper.
+
+    A full card per paper costs about a third of a screen, so the digest's
+    length — not its relevance — is what makes it unreadable once the filter
+    widens. These papers still arrive in full (title, journal, score, the
+    Korean one-liner and a link); they just cost a line instead of a card.
+
+    Returns one block list per Slack message, each under the block and
+    character limits, so the caller can attribute a failed message to exactly
+    the papers it carried.
+    """
+    lines: list[str] = []
+    for paper, verdict in items:
+        title = _truncate(paper.title, 180).replace("<", "&lt;").replace(">", "&gt;")
+        link = f"<{paper.url}|{title}>" if paper.url else title
+        head = f"*{verdict.score}* · {link} · _{paper.journal}_"
+        lines.append(head + ("\n" + verdict.one_liner if verdict.one_liner else ""))
+
+    chunks: list[list[str]] = []
+    cur: list[str] = []
+    size = 0
+    for line in lines:
+        if cur and size + len(line) + 2 > BRIEF_CHARS:
+            chunks.append(cur)
+            cur, size = [], 0
+        cur.append(line)
+        size += len(line) + 2
+    if cur:
+        chunks.append(cur)
+
+    out: list[list[dict]] = []
+    for i, chunk in enumerate(chunks):
+        label = heading if i == 0 else f"{heading} ({i + 1})"
+        out.append([
+            {"type": "context", "elements": [{"type": "mrkdwn", "text": label}]},
+            {"type": "section",
+             "text": {"type": "mrkdwn", "text": BRIEF_SEP.join(chunk)}},
+            {"type": "divider"},
+        ])
+    return out
+
+
 def post_papers(token: str, channel: str, items: Iterable[tuple[Paper, Verdict]],
                 summary: dict | None = None, title: str = "🐝 SynBEE 논문 알림",
+                card_min_score: int | None = None,
                 ) -> tuple[int, list[tuple[Paper, Verdict]]]:
     """Post per-paper messages, then a final digest summary reflecting the
     actual success/failure counts.
+
+    `card_min_score` splits delivery by score: papers at or above it get a full
+    card, the rest arrive as a compact list. None keeps every paper on a card.
+    The split is presentation only — nothing is dropped, and a paper that fails
+    to post comes back in `failed_items` either way.
 
     Returns (posted_count, failed_items). The caller needs the actual failed
     items, not just a count, so it can avoid marking them seen — a paper marked
@@ -247,13 +305,38 @@ def post_papers(token: str, channel: str, items: Iterable[tuple[Paper, Verdict]]
     items_list = list(items)
     posted = 0
     failed_items: list[tuple[Paper, Verdict]] = []
-    for paper, verdict in items_list:
+
+    if card_min_score is None:
+        cards, briefs = items_list, []
+    else:
+        cards = [iv for iv in items_list if iv[1].score >= card_min_score]
+        briefs = [iv for iv in items_list if iv[1].score < card_min_score]
+
+    for paper, verdict in cards:
         try:
             post_paper(client, channel, paper, verdict)
             posted += 1
         except Exception as e:
             failed_items.append((paper, verdict))
             sys.stderr.write(f"  ! post failed for {paper.id}: {e}\n")
+
+    if briefs:
+        # Chunk and message must agree, or a failed post would be attributed to
+        # the wrong papers and the right ones would be marked seen unsent.
+        start = 0
+        heading = f"📋 참고 — score {card_min_score - 1} 이하 {len(briefs)}편"
+        for blocks in build_brief_blocks(briefs, heading):
+            n = len(blocks[1]["text"]["text"].split(BRIEF_SEP))
+            carried = briefs[start:start + n]
+            start += n
+            try:
+                client.chat_postMessage(
+                    channel=channel, blocks=blocks,
+                    text=f"참고 논문 {len(carried)}편")
+                posted += len(carried)
+            except Exception as e:
+                failed_items.extend(carried)
+                sys.stderr.write(f"  ! brief post failed ({len(carried)} papers): {e}\n")
     if summary is not None:
         final = dict(summary)
         final["posted"] = posted

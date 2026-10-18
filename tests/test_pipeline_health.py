@@ -188,6 +188,7 @@ def test_daily_counts_the_api_and_rss_copies_as_one_new_paper(monkeypatch, tmp_p
         prefilter_non_articles, abstract_backfill_enabled = True, False
         abstract_backfill_timeout = 5
         slack_max_posts = None
+        slack_card_min_score = None
         seen_db_path = tmp_path / "seen.db"
 
         def target_channel(self, score):

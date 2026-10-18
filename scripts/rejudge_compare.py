@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
+from synbee_bot.filter import USAGE, filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper  # noqa: E402
 
 # Sample sizes per stored score. Score 3 is where the near-misses live, so it
@@ -52,6 +52,73 @@ def _row_to_paper(row: sqlite3.Row) -> Paper:
         authors=[],
         published=None,
     )
+
+
+def reject_population(conn: sqlite3.Connection, since: str,
+                      quota: dict[int, int]) -> dict[int, int]:
+    """How many stored rejects exist per score, not how many were sampled.
+
+    The GAINED count is a rate measured on the sample; the number of papers a
+    prompt change would actually recover is that rate times this population.
+    Reported so the two are never confused.
+    """
+    return {
+        score: conn.execute(
+            "SELECT COUNT(*) FROM seen WHERE verdict='NO' AND score=? AND pushed_at>=?",
+            (score, since),
+        ).fetchone()[0]
+        for score in sorted(quota, reverse=True)
+    }
+
+
+def pass_score_distribution(conn: sqlite3.Connection,
+                            since: str, min_score: int) -> dict[int, int]:
+    """How the papers that already pass are spread across scores.
+
+    Delivery is tiered by score, so this is what says how many of today's
+    papers stay full cards and how many become one-line entries — the count
+    that decides whether a widening makes the digest longer to read or
+    shorter. Nothing else in the pipeline reports it.
+    """
+    rows = conn.execute(
+        "SELECT score, COUNT(*) FROM seen "
+        "WHERE verdict='YES' AND score>=? AND pushed_at>=? GROUP BY score",
+        (min_score, since),
+    ).fetchall()
+    # Index the columns rather than unpacking or sorting the rows themselves:
+    # the caller has set row_factory to sqlite3.Row, and Row objects are not
+    # orderable.
+    dist = {int(r[0]): int(r[1]) for r in rows}
+    return dict(sorted(dist.items()))
+
+
+def reject_sample_by_ids(conn: sqlite3.Connection,
+                         ids: list[str]) -> list[Paper]:
+    """Re-select an earlier run's exact reject sample.
+
+    A fixed seed does not pin the sample: `_sample` shuffles the rows the query
+    returns, and seen.db grows between runs, so the same seed over a larger
+    population draws different papers. Two runs compared that way differ by
+    sample as much as by prompt — the 2026-10-18 v3.2 run overlapped the v3 run
+    by only 31 of 94 GAINED, which is the overlap chance alone predicts. Pinning
+    the ids is what makes a prompt-to-prompt comparison mean anything.
+    """
+    conn.row_factory = sqlite3.Row
+    found: dict[str, Paper] = {}
+    for chunk_start in range(0, len(ids), 500):
+        chunk = ids[chunk_start:chunk_start + 500]
+        rows = conn.execute(
+            f"SELECT * FROM seen WHERE id IN ({','.join('?' * len(chunk))})",
+            chunk,
+        ).fetchall()
+        for r in rows:
+            found[r["id"]] = _row_to_paper(r)
+    missing = [i for i in ids if i not in found]
+    if missing:
+        sys.stderr.write(
+            f"[rejudge] {len(missing)} pinned ids are no longer in seen.db; "
+            f"the comparison covers {len(found)} of {len(ids)}\n")
+    return [found[i] for i in ids if i in found]
 
 
 def _sample(conn: sqlite3.Connection, since: str, quota: dict[int, int],
@@ -88,6 +155,10 @@ def main() -> int:
     ap.add_argument("--model", default="gemini-2.5-flash")
     ap.add_argument("--fallback", default="gemini-2.5-flash-lite")
     ap.add_argument("--seed", type=int, default=20261014)
+    ap.add_argument("--reuse-sample", default="",
+                    help="Path to an earlier rejudge_report.json: replay that "
+                         "run's exact reject sample instead of drawing a new "
+                         "one, so the two runs differ only by prompt")
     ap.add_argument("--out", default="rejudge_report.json")
     args = ap.parse_args()
 
@@ -99,15 +170,36 @@ def main() -> int:
     conn = sqlite3.connect(args.db)
     rejects, passes = _sample(conn, args.since, DEFAULT_REJECT_QUOTA,
                               random.Random(args.seed))
+    if args.reuse_sample:
+        pinned = json.loads(Path(args.reuse_sample).read_text(encoding="utf-8"))
+        ids = pinned.get("reject_sample_ids") or []
+        if not ids:
+            sys.stderr.write(
+                f"{args.reuse_sample} has no reject_sample_ids — it predates "
+                "sample pinning, so there is no sample to reuse\n")
+            return 1
+        rejects = reject_sample_by_ids(conn, ids)
+        print(f"Reusing the reject sample of {args.reuse_sample} "
+              f"({len(rejects)} papers)", flush=True)
     stored = {
         r["id"]: (r["verdict"], r["score"])
         for r in conn.execute("SELECT id, verdict, score FROM seen")
     }
 
+    population = reject_population(conn, args.since, DEFAULT_REJECT_QUOTA)
+    pass_dist = pass_score_distribution(conn, args.since, args.min_score)
+
     papers = rejects + passes
     print(f"Re-judging {len(papers)} papers "
           f"({len(rejects)} stored NO, {len(passes)} stored YES) "
           f"with {args.prompt}", flush=True)
+    print("Current passes by score: "
+          + ", ".join(f"{s_}점 {n}" for s_, n in pass_dist.items())
+          + f"  (card tier at 8+: {sum(n for s_, n in pass_dist.items() if s_ >= 8)})",
+          flush=True)
+    print("Stored rejects in window (sampled / total): "
+          + ", ".join(f"{s}점 {min(DEFAULT_REJECT_QUOTA[s], n)}/{n}"
+                      for s, n in population.items()), flush=True)
 
     prompt = load_prompt(ROOT / args.prompt)
     verdicts = filter_batch(
@@ -142,6 +234,10 @@ def main() -> int:
     report = {
         "prompt": args.prompt, "since": args.since,
         "sampled_rejects": len(rejects), "sampled_passes": len(passes),
+        "reject_population": population,
+        "pass_score_distribution": pass_dist,
+        "reject_sample_ids": [p.id for p in rejects],
+        "reused_sample_from": args.reuse_sample or None,
         "errors": errors, "gained": gained, "lost": lost,
     }
     Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2),
@@ -151,7 +247,8 @@ def main() -> int:
     print(f"\nGAINED {len(gained)} of {len(rejects)} sampled rejects "
           f"({reject_rate:.1%})")
     print(f"LOST   {len(lost)} of {len(passes)} stored passes")
-    print(f"errors {errors}\n")
+    print(f"errors {errors}")
+    print(f"tokens {USAGE.total().summary()}\n")
 
     by_journal = collections.Counter(g["journal"] for g in gained)
     print("GAINED by journal:")

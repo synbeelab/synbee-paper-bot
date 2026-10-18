@@ -4,11 +4,85 @@ from __future__ import annotations
 import json
 import re
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .models import Paper, Verdict
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    """What a run actually spent, per the API's own accounting.
+
+    Cost here is dominated by thinking tokens, and the prompt is the same
+    ~5k-token prefix on every call, so the two numbers that decide the bill are
+    `thoughts` and how much of `prompt` was served from cache. Neither was ever
+    recorded, which left prompt-size and model decisions resting on a reading of
+    the pricing page instead of a measurement.
+    """
+
+    calls: int = 0
+    prompt: int = 0
+    cached: int = 0
+    thoughts: int = 0
+    output: int = 0
+
+    def plus(self, other: "TokenUsage") -> "TokenUsage":
+        return TokenUsage(
+            calls=self.calls + other.calls,
+            prompt=self.prompt + other.prompt,
+            cached=self.cached + other.cached,
+            thoughts=self.thoughts + other.thoughts,
+            output=self.output + other.output,
+        )
+
+    def summary(self) -> str:
+        if not self.calls:
+            return "no Gemini calls"
+        n = self.calls
+        hit = (self.cached / self.prompt * 100) if self.prompt else 0.0
+        return (f"{n} calls | prompt {self.prompt / n:,.0f}/call "
+                f"(cached {hit:.0f}%) | thinking {self.thoughts / n:,.0f}/call "
+                f"| output {self.output / n:,.0f}/call")
+
+
+class _UsageLedger:
+    """Thread-safe accumulator — filter_batch runs calls on a pool."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._total = TokenUsage()
+
+    def add(self, usage: TokenUsage) -> None:
+        with self._lock:
+            self._total = self._total.plus(usage)
+
+    def total(self) -> TokenUsage:
+        with self._lock:
+            return replace(self._total)
+
+
+USAGE = _UsageLedger()
+
+
+def _record_usage(resp) -> None:
+    """Pull token counts off a response; never let accounting break a verdict."""
+    try:
+        m = getattr(resp, "usage_metadata", None)
+        if m is None:
+            return
+        USAGE.add(TokenUsage(
+            calls=1,
+            prompt=getattr(m, "prompt_token_count", 0) or 0,
+            cached=getattr(m, "cached_content_token_count", 0) or 0,
+            thoughts=getattr(m, "thoughts_token_count", 0) or 0,
+            output=getattr(m, "candidates_token_count", 0) or 0,
+        ))
+    except Exception:  # pragma: no cover - accounting must never raise
+        pass
 
 
 def _render_prompt(template: str, paper: Paper) -> str:
@@ -86,6 +160,7 @@ def _filter_with_gemini(paper: Paper, prompt: str, model: str, api_key: str,
                     temperature=0.1,
                 ),
             )
+            _record_usage(resp)
             return _parse_verdict(resp.text or "", model_used=model)
         except Exception as e:
             last_err = e

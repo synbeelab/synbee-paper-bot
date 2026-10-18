@@ -19,9 +19,14 @@ on:
         description: "Concurrent Gemini calls"
         required: false
         default: "8"
+      reuse_sample_from_run:
+        description: "Run ID of an earlier re-judge: reuse its exact reject sample so only the prompt differs"
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -62,15 +67,32 @@ jobs:
           restore-keys: |
             synbee-seen-
 
+      # A fixed seed does not pin the sample once seen.db has grown, so a
+      # prompt-to-prompt comparison has to replay the earlier run's ids.
+      - name: Fetch the sample to reuse
+        if: inputs.reuse_sample_from_run != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ inputs.reuse_sample_from_run }}" \
+            -R "${{ github.repository }}" -n rejudge-report -D baseline
+          test -f baseline/rejudge_report.json || {
+            echo "❌ run ${{ inputs.reuse_sample_from_run }} has no rejudge-report artifact"; exit 1; }
+
       - name: Re-judge with the candidate prompt
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PYTHONIOENCODING: utf-8
         run: |
           test -f data/seen.db || { echo "❌ no seen.db in cache"; exit 1; }
+          REUSE=""
+          if [ -n "${{ inputs.reuse_sample_from_run }}" ]; then
+            REUSE="--reuse-sample baseline/rejudge_report.json"
+          fi
           python scripts/rejudge_compare.py \
             --since "${{ inputs.since }}" \
             --parallel "${{ inputs.parallel }}" \
+            $REUSE \
             --out rejudge_report.json
 
       - name: Upload report

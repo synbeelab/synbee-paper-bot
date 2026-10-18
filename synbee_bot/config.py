@@ -64,6 +64,7 @@ class Config:
     slack_channel_test: str
     slack_use_test: bool
     slack_max_posts: int | None
+    slack_card_min_score: int | None
 
     # Pre-LLM shaping (see abstracts.py / prefilter.py)
     abstract_backfill_enabled: bool
@@ -156,6 +157,8 @@ def load_config(config_path: Path | None = None) -> Config:
         slack_channel_test=str(slack.get("channels", {}).get("test", "")),
         slack_use_test=bool(slack.get("use_test_channel", True)),
         slack_max_posts=_optional_cap(slack.get("max_posts_per_run")),
+        slack_card_min_score=(None if slack.get("card_min_score") in (None, "")
+                              else int(slack["card_min_score"])),
         abstract_backfill_enabled=bool(backfill.get("enabled", True)),
         abstract_backfill_timeout=int(backfill.get("timeout_seconds", 30)),
         abstract_rejudge_days=int(backfill.get("rejudge_days", 30)),
