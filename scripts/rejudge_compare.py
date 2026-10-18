@@ -54,6 +54,23 @@ def _row_to_paper(row: sqlite3.Row) -> Paper:
     )
 
 
+def reject_population(conn: sqlite3.Connection, since: str,
+                      quota: dict[int, int]) -> dict[int, int]:
+    """How many stored rejects exist per score, not how many were sampled.
+
+    The GAINED count is a rate measured on the sample; the number of papers a
+    prompt change would actually recover is that rate times this population.
+    Reported so the two are never confused.
+    """
+    return {
+        score: conn.execute(
+            "SELECT COUNT(*) FROM seen WHERE verdict='NO' AND score=? AND pushed_at>=?",
+            (score, since),
+        ).fetchone()[0]
+        for score in sorted(quota, reverse=True)
+    }
+
+
 def _sample(conn: sqlite3.Connection, since: str, quota: dict[int, int],
             rng: random.Random) -> tuple[list[Paper], list[Paper]]:
     conn.row_factory = sqlite3.Row
@@ -104,10 +121,15 @@ def main() -> int:
         for r in conn.execute("SELECT id, verdict, score FROM seen")
     }
 
+    population = reject_population(conn, args.since, DEFAULT_REJECT_QUOTA)
+
     papers = rejects + passes
     print(f"Re-judging {len(papers)} papers "
           f"({len(rejects)} stored NO, {len(passes)} stored YES) "
           f"with {args.prompt}", flush=True)
+    print("Stored rejects in window (sampled / total): "
+          + ", ".join(f"{s}점 {min(DEFAULT_REJECT_QUOTA[s], n)}/{n}"
+                      for s, n in population.items()), flush=True)
 
     prompt = load_prompt(ROOT / args.prompt)
     verdicts = filter_batch(
@@ -142,6 +164,7 @@ def main() -> int:
     report = {
         "prompt": args.prompt, "since": args.since,
         "sampled_rejects": len(rejects), "sampled_passes": len(passes),
+        "reject_population": population,
         "errors": errors, "gained": gained, "lost": lost,
     }
     Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2),
