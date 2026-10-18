@@ -30,7 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
+from synbee_bot.filter import USAGE, filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper  # noqa: E402
 
 # Sample sizes per stored score. Score 3 is where the near-misses live, so it
@@ -220,7 +220,8 @@ def main() -> int:
     print(f"\nGAINED {len(gained)} of {len(rejects)} sampled rejects "
           f"({reject_rate:.1%})")
     print(f"LOST   {len(lost)} of {len(passes)} stored passes")
-    print(f"errors {errors}\n")
+    print(f"errors {errors}")
+    print(f"tokens {USAGE.total().summary()}\n")
 
     by_journal = collections.Counter(g["journal"] for g in gained)
     print("GAINED by journal:")

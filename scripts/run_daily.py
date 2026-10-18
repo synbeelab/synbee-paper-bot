@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT))
 from synbee_bot.abstracts import backfill_abstracts  # noqa: E402
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.dedup import drop_known_dois, drop_known_titles, merge_by_doi  # noqa: E402
-from synbee_bot.filter import filter_batch, load_prompt  # noqa: E402
+from synbee_bot.filter import USAGE, filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper, Verdict  # noqa: E402
 from synbee_bot.prefilter import drop_non_articles  # noqa: E402
 from synbee_bot.rejudge import (  # noqa: E402
@@ -376,6 +376,7 @@ def main() -> int:
         for p, v in persist:
             db.mark_seen(p, v)
         _human_log(f"Persisted {len(persist)} verdicts to {cfg.seen_db_path}")
+        _human_log(f"Gemini tokens — {USAGE.total().summary()}")
         settle_title_only(db, recovered, persist)
         # Only daily's backfill can ever recover (and expire) a queued paper;
         # with it off, the queue would just grow.
