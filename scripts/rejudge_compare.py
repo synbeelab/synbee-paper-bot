@@ -71,6 +71,23 @@ def reject_population(conn: sqlite3.Connection, since: str,
     }
 
 
+def pass_score_distribution(conn: sqlite3.Connection,
+                            since: str, min_score: int) -> dict[int, int]:
+    """How the papers that already pass are spread across scores.
+
+    Delivery is tiered by score, so this is what says how many of today's
+    papers stay full cards and how many become one-line entries — the count
+    that decides whether a widening makes the digest longer to read or
+    shorter. Nothing else in the pipeline reports it.
+    """
+    rows = conn.execute(
+        "SELECT score, COUNT(*) FROM seen "
+        "WHERE verdict='YES' AND score>=? AND pushed_at>=? GROUP BY score",
+        (min_score, since),
+    ).fetchall()
+    return {int(s): int(n) for s, n in sorted(rows)}
+
+
 def reject_sample_by_ids(conn: sqlite3.Connection,
                          ids: list[str]) -> list[Paper]:
     """Re-select an earlier run's exact reject sample.
@@ -166,11 +183,16 @@ def main() -> int:
     }
 
     population = reject_population(conn, args.since, DEFAULT_REJECT_QUOTA)
+    pass_dist = pass_score_distribution(conn, args.since, args.min_score)
 
     papers = rejects + passes
     print(f"Re-judging {len(papers)} papers "
           f"({len(rejects)} stored NO, {len(passes)} stored YES) "
           f"with {args.prompt}", flush=True)
+    print("Current passes by score: "
+          + ", ".join(f"{s_}점 {n}" for s_, n in pass_dist.items())
+          + f"  (card tier at 8+: {sum(n for s_, n in pass_dist.items() if s_ >= 8)})",
+          flush=True)
     print("Stored rejects in window (sampled / total): "
           + ", ".join(f"{s}점 {min(DEFAULT_REJECT_QUOTA[s], n)}/{n}"
                       for s, n in population.items()), flush=True)
@@ -209,6 +231,7 @@ def main() -> int:
         "prompt": args.prompt, "since": args.since,
         "sampled_rejects": len(rejects), "sampled_passes": len(passes),
         "reject_population": population,
+        "pass_score_distribution": pass_dist,
         "reject_sample_ids": [p.id for p in rejects],
         "reused_sample_from": args.reuse_sample or None,
         "errors": errors, "gained": gained, "lost": lost,
