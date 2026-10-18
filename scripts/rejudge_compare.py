@@ -85,7 +85,11 @@ def pass_score_distribution(conn: sqlite3.Connection,
         "WHERE verdict='YES' AND score>=? AND pushed_at>=? GROUP BY score",
         (min_score, since),
     ).fetchall()
-    return {int(s): int(n) for s, n in sorted(rows)}
+    # Index the columns rather than unpacking or sorting the rows themselves:
+    # the caller has set row_factory to sqlite3.Row, and Row objects are not
+    # orderable.
+    dist = {int(r[0]): int(r[1]) for r in rows}
+    return dict(sorted(dist.items()))
 
 
 def reject_sample_by_ids(conn: sqlite3.Connection,
