@@ -60,6 +60,12 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
    아닙니다. (그 시스템에서의 **생물학적 발견**이 결과물이면 여전히 NO.)
    예: 다중화 대사공학 기법, 표적 DNA 삽입용 retrotransposon 공학, CHO 글리코엔지니어링,
    세포 계보를 기록하는 DNA 기록 장치, 경로 전역 base-editing 스크린, 광제어 miniprotein.
+
+   **단, 그 도구는 유전자·전사체·단백질/효소·대사·세포를 조작하거나 측정하는 것이어야
+   합니다.** 새로운 분자를 만들었다는 사실만으로는 부족합니다 — 펩타이드 자기조립,
+   나노구조·나노섬유, 하이드로젤·고분자 소재, 표면 코팅처럼 **재료가 결과물**인 연구는
+   NO 목록의 "재료·광물리·나노소재"가 우선하며, 범주 1은 적용되지 않습니다.
+   (그 소재가 유전자 전달·효소 고정화 같은 **생물학적 조작 기능**을 수행할 때만 범주 1입니다.)
 2. **대사 분석·모델링** — ¹³C-MFA, 속도론 모델, 게놈 수준 대사 모델(GEM), flux balance
    analysis, 대사 재배선 규명. 균주 개량의 직전 단계이므로 엔지니어링이 없어도 YES.
 3. **미생물 상호작용·합성 군집** — cross-feeding, siderophore 교환, 정의된 컨소시엄(SynCom),
@@ -120,6 +126,10 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
   성능 향상이 없으면 NO (예: 야생형 미생물에서 효소 하나 분리해 세제에 써 본 논문)
 - **발효 공정 최적화**: 균주·효소 엔지니어링 없이 배지·조건만 조정한 연구
   (C1·가스 기질 전환 공정은 경계 범주 11)
+  **단, 대상이 엔지니어링된 생산 균주이고 목적이 그 균주의 역가·수율·생산성 향상이면
+  미션 1입니다** — 용존산소·공급 전략 제어, 성장과 생산의 분리·협조 같은 공정 설계는
+  균주 개량과 한 몸이므로 YES(7~8점). "배지 조건만 바꾼 연구"는 야생형·비생산 균주를
+  대상으로 성능 향상 없이 조건을 훑은 경우를 가리킵니다.
 - **계산 단독 연구**: 기존 데이터를 분석하기만 하고 새 도구를 내놓지 않은 것
   (**도구·모델 자체가 결과물**이면 경계 범주 4)
 - **범용 오믹스·생명정보 도구**: 단일세포 분석법, 시퀀싱 정렬·변이 검출, 통계 방법론처럼
@@ -182,6 +192,9 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 | Near-infrared photochromic miniprotein enables photoacoustic molecular imaging | Nat Methods | **YES · M2 · 8** | 경계 1 — 결과물이 공학된 단백질 도구 (수행 시스템 불문) |
 | Antibody-recruiting molecules based on mimotope fusion peptides and a dimeric antibiotic | bioRxiv | **YES · M2 · 7** | 경계 1 — 설계된 분자 자체가 결과물, 백신 효능 시험이 아님 |
 | A DNA Typewriter records the cell lineage history of a mouse | Science | **YES · M2 · 7** | 경계 1 — 포유류지만 결과물이 계보 기록 장치 |
+| Iterative dissolved-oxygen control combined with growth–production coordination | Metab Eng | **YES · M1 · 8** | 미션 1 — 생산 균주의 역가를 올리는 공정 설계 |
+| Sequence-encoded hexagonal lattices in multichannel peptide nanofibrils | Nature | **NO · 2** | 경계 1 아님 — 결과물이 자기조립 재료, 생물학적 조작 기능 없음 |
+| Random hybrid polypeptides regulate immune signaling through promiscuous binding | JACS | **NO · 2** | 경계 1 아님 — 고분자 소재의 생물활성, 도구가 아님 |
 | Tonakiamides A and B, antitrypanosomal lipopeptides from a marine cyanobacterium | J Nat Prod | **NO · 3** | 경계 8 아님 — 화합물 분리·활성만, 효소·유전자 없음 |
 | Dosing and delivery of bacteriophage therapy in a murine wound infection model | Nat Commun | **NO · 3** | 경계 6 아님 — 동물 효능 시험 |
 | SVPG: a pangenome-based structural variant detection approach | Nat Methods | **NO · 3** | 경계 4 아님 — 범용 생명정보 도구 |

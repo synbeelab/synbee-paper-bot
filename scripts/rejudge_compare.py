@@ -71,6 +71,35 @@ def reject_population(conn: sqlite3.Connection, since: str,
     }
 
 
+def reject_sample_by_ids(conn: sqlite3.Connection,
+                         ids: list[str]) -> list[Paper]:
+    """Re-select an earlier run's exact reject sample.
+
+    A fixed seed does not pin the sample: `_sample` shuffles the rows the query
+    returns, and seen.db grows between runs, so the same seed over a larger
+    population draws different papers. Two runs compared that way differ by
+    sample as much as by prompt — the 2026-10-18 v3.2 run overlapped the v3 run
+    by only 31 of 94 GAINED, which is the overlap chance alone predicts. Pinning
+    the ids is what makes a prompt-to-prompt comparison mean anything.
+    """
+    conn.row_factory = sqlite3.Row
+    found: dict[str, Paper] = {}
+    for chunk_start in range(0, len(ids), 500):
+        chunk = ids[chunk_start:chunk_start + 500]
+        rows = conn.execute(
+            f"SELECT * FROM seen WHERE id IN ({','.join('?' * len(chunk))})",
+            chunk,
+        ).fetchall()
+        for r in rows:
+            found[r["id"]] = _row_to_paper(r)
+    missing = [i for i in ids if i not in found]
+    if missing:
+        sys.stderr.write(
+            f"[rejudge] {len(missing)} pinned ids are no longer in seen.db; "
+            f"the comparison covers {len(found)} of {len(ids)}\n")
+    return [found[i] for i in ids if i in found]
+
+
 def _sample(conn: sqlite3.Connection, since: str, quota: dict[int, int],
             rng: random.Random) -> tuple[list[Paper], list[Paper]]:
     conn.row_factory = sqlite3.Row
@@ -105,6 +134,10 @@ def main() -> int:
     ap.add_argument("--model", default="gemini-2.5-flash")
     ap.add_argument("--fallback", default="gemini-2.5-flash-lite")
     ap.add_argument("--seed", type=int, default=20261014)
+    ap.add_argument("--reuse-sample", default="",
+                    help="Path to an earlier rejudge_report.json: replay that "
+                         "run's exact reject sample instead of drawing a new "
+                         "one, so the two runs differ only by prompt")
     ap.add_argument("--out", default="rejudge_report.json")
     args = ap.parse_args()
 
@@ -116,6 +149,17 @@ def main() -> int:
     conn = sqlite3.connect(args.db)
     rejects, passes = _sample(conn, args.since, DEFAULT_REJECT_QUOTA,
                               random.Random(args.seed))
+    if args.reuse_sample:
+        pinned = json.loads(Path(args.reuse_sample).read_text(encoding="utf-8"))
+        ids = pinned.get("reject_sample_ids") or []
+        if not ids:
+            sys.stderr.write(
+                f"{args.reuse_sample} has no reject_sample_ids — it predates "
+                "sample pinning, so there is no sample to reuse\n")
+            return 1
+        rejects = reject_sample_by_ids(conn, ids)
+        print(f"Reusing the reject sample of {args.reuse_sample} "
+              f"({len(rejects)} papers)", flush=True)
     stored = {
         r["id"]: (r["verdict"], r["score"])
         for r in conn.execute("SELECT id, verdict, score FROM seen")
@@ -165,6 +209,8 @@ def main() -> int:
         "prompt": args.prompt, "since": args.since,
         "sampled_rejects": len(rejects), "sampled_passes": len(passes),
         "reject_population": population,
+        "reject_sample_ids": [p.id for p in rejects],
+        "reused_sample_from": args.reuse_sample or None,
         "errors": errors, "gained": gained, "lost": lost,
     }
     Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2),
