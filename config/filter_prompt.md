@@ -49,6 +49,12 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 "설계의 입력값·기초 지식·통찰"로 포장할 수 있습니다. 이 포장이 바로 제1원칙이 금지하는
 전이 가능성 논증이며, 아래 경계 범주(특히 2·6·9)가 그 포장의 출구로 오용되어 왔습니다.
 
+**이 따름정리는 기전을 "규명만" 한 논문에 적용됩니다.** 논문이 분자·균주·회로를
+**실제로 만들거나 개량했다면** 그것은 기전 규명 논문이 아니라 엔지니어링 논문이고,
+따름정리가 아니라 미션 1~3을 그대로 적용하세요. 특히 **지향성 진화(directed evolution),
+단백질 공학, 효소 개량이 수행된 연구는 대상 분자·시스템을 불문하고 미션 1입니다** —
+기전을 함께 규명했다는 이유로 탈락시키지 마세요.
+
 기전 규명 논문은 **규명된 기전 자체가 우리가 조작할 대상일 때만** YES입니다:
 
 - 우리가 **쓰는 효소**의 촉매 기전 → YES (경계 9)
@@ -87,7 +93,8 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
    실험 검증이 없어도 YES. (특정 질환 표적 신약 발굴에만 쓰인 경우는 NO.)
 5. **무세포계·합성세포** — 무세포 발현 시스템, 추출물 공학, 합성세포·최소세포 구축.
 6. **파지 생물학·항파지 방어 시스템** — **신규** 방어 시스템의 발굴, 방어 시스템의
-   도구화, 파지 수용체·tail fiber 공학, 파지 치료 설계. 새로운 시스템을 손에 쥐여주거나
+   도구화, 파지 수용체·tail fiber 공학, 파지 치료 설계. **파지 유래 단백질(엔돌리신,
+   세포벽 결합 도메인, tail fiber)을 프로브·도구로 공학한 연구도 여기 포함됩니다.** 새로운 시스템을 손에 쥐여주거나
    기존 시스템을 도구로 바꿔야 미션 2의 공급원입니다.
    (단순 임상 파지 치료 효능 시험, 파지 유행 역학은 NO.
    **이미 알려진 방어 시스템의 구조·조립·활성화 기전만 규명한 연구도 NO입니다** —
@@ -213,6 +220,7 @@ SynBEE Lab은 **Synthetic Biology and Enzyme Engineering Laboratory**로, 다음
 | A Practical Guide to Dereplication in Natural Products Metabolomics | J Nat Prod | **YES · M1 · 6** | 경계 10 — 천연물 구조 동정 워크플로가 결과물 |
 | Antibody-recruiting molecules based on mimotope fusion peptides and a dimeric antibiotic | bioRxiv | **YES · M2 · 6** | 미션 2 — 설계된 분자가 결과물, 백신 효능 시험이 아님 |
 | Iterative dissolved-oxygen control combined with growth–production coordination | Metab Eng | **YES · M1 · 8** | 미션 1 — 생산 균주의 역가를 올리는 공정 설계 |
+| Directed Evolution of a Protein Catenane Reveals How Noncanonical Topology Modulates Function | JACS | **YES · M1 · 8** | 지향성 진화로 단백질을 개량 — 기전을 함께 규명해도 엔지니어링 논문 |
 | Sequence-encoded hexagonal lattices in multichannel peptide nanofibrils | Nature | **NO · 2** | 재료·나노소재 — 결과물이 자기조립 구조체 |
 | Histidine-51 Facilitates the Conformational Change and Deprotonation of Horse Liver Alcohol Dehydrogenase | Biochemistry | **NO · 3** | 경계 9 아님 — 교과서적 모델 효소의 기전, 우리가 쓸 효소가 아님 |
 | Tuning inhibitor susceptibility of human 4-hydroxyphenylpyruvate dioxygenase | (효소학) | **NO · 3** | 경계 9 아님 — 포유류 대사질환 효소의 저해제 감수성 |
