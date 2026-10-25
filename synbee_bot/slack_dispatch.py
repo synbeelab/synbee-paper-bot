@@ -259,7 +259,13 @@ def build_brief_blocks(items: list[tuple[Paper, Verdict]],
         title = _truncate(paper.title, 180).replace("<", "&lt;").replace(">", "&gt;")
         link = f"<{paper.url}|{title}>" if paper.url else title
         head = f"*{verdict.score}* · {link} · _{paper.journal}_"
-        lines.append(head + ("\n" + verdict.one_liner if verdict.one_liner else ""))
+        # `one_liner` is the judgment trace — it ends in "미션 N에 해당합니다", which
+        # is the bot's reason for passing the paper, not information about the
+        # paper. On a list of fifty entries that reason is noise; what the reader
+        # needs is what the work contributed, which is what `one_liner_en` holds.
+        # Fall back to the Korean line so an empty field never lists a paper bare.
+        summary = verdict.one_liner_en or verdict.one_liner
+        lines.append(head + ("\n" + summary if summary else ""))
 
     chunks: list[list[str]] = []
     cur: list[str] = []

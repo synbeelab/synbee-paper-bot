@@ -88,15 +88,28 @@ def test_without_a_threshold_every_paper_still_gets_a_card(client):
     assert (posted, failed) == (2, [])
 
 
-def test_the_list_carries_title_journal_score_and_the_korean_summary(client):
+def test_the_list_carries_title_journal_score_and_the_contribution(client):
     sd.post_papers("t", "C1", [(paper("x"), verdict(7))], card_min_score=8)
 
     body = client.briefs[0][1]["text"]["text"]
     assert "Title x" in body
     assert "https://example.org/x" in body
     assert "Nature Communications" in body
-    assert "한국어 한 문장 요약" in body
     assert "*7*" in body
+    # The list line says what the paper contributed, not why the bot passed it:
+    # `one_liner` is the judgment trace, `one_liner_en` is the contribution.
+    assert "one line" in body
+    assert "한국어 한 문장 요약" not in body
+
+
+def test_the_list_falls_back_to_the_korean_line_when_there_is_no_english_one(client):
+    """A paper is never listed bare — an empty `one_liner_en` must not blank it."""
+    v = Verdict(verdict="YES", mission=1, score=7,
+                one_liner="한국어 한 문장 요약", one_liner_en="")
+
+    sd.post_papers("t", "C1", [(paper("x"), v)], card_min_score=8)
+
+    assert "한국어 한 문장 요약" in client.briefs[0][1]["text"]["text"]
 
 
 def test_a_failed_list_message_returns_exactly_the_papers_it_carried(monkeypatch):
