@@ -312,8 +312,12 @@ def main() -> int:
             "passed": len(passing),
         }
         _log(f"Posting {len(passing)} to weekly channel {cfg.weekly_channel}…")
+        # Weekly carries more papers than daily, so it needs the score tiering
+        # more, not less. Without this it posted every paper as a full card —
+        # 63 cards on 2026-10-24, enough that Slack suppressed some of them.
         posted, post_failures = post_papers(cfg.slack_bot_token, cfg.weekly_channel,
-                                            passing, summary=summary, title=WEEKLY_TITLE)
+                                            passing, summary=summary, title=WEEKLY_TITLE,
+                                            card_min_score=cfg.slack_card_min_score)
         _log(f"Posted {posted} messages ({len(post_failures)} failed).")
     elif args.dry_run:
         _log("Dry run — no Slack post, DB not updated.")
