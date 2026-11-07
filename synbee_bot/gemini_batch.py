@@ -130,7 +130,8 @@ def filter_batch_offline(
     src = tmpdir / "requests.jsonl"
 
     try:
-        client = genai.Client(api_key=api_key)
+        # google-genai 3.0 defaults to v1; batch JSON-mode requests need v1beta.
+        client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
         _write_requests(papers, prompt, src)
         size_mb = src.stat().st_size / 1e6
         log(f"Batch filter: submitting {len(papers)} papers ({size_mb:.1f} MB) "

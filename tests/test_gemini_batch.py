@@ -87,7 +87,11 @@ def _reset():
 
 def install(monkeypatch, **kw):
     from google import genai
-    monkeypatch.setattr(genai, "Client", lambda api_key=None: FakeClient(api_key, **kw))
+    def make(api_key=None, http_options=None):
+        client = FakeClient(api_key, **kw)
+        client.http_options = http_options
+        return client
+    monkeypatch.setattr(genai, "Client", make)
 
 
 def run(papers, **kw):
@@ -206,7 +210,7 @@ def test_upload_failure_hands_everything_back(monkeypatch):
 
             self.files = Files()
 
-    monkeypatch.setattr(genai, "Client", lambda api_key=None: Broken(api_key))
+    monkeypatch.setattr(genai, "Client", lambda api_key=None, http_options=None: Broken(api_key))
     papers = [paper(0), paper(1)]
     results, unfinished = run(papers)
     assert results == []
@@ -229,7 +233,7 @@ def test_download_failure_hands_everything_back(monkeypatch):
 
             self.files = Files()
 
-    monkeypatch.setattr(genai, "Client", lambda api_key=None: Broken(api_key))
+    monkeypatch.setattr(genai, "Client", lambda api_key=None, http_options=None: Broken(api_key))
     papers = [paper(0)]
     results, unfinished = run(papers)
     assert results == [] and len(unfinished) == 1
@@ -262,3 +266,11 @@ def test_request_file_carries_the_same_prompt_and_settings(monkeypatch):
     # Crucially: no thinking_config. Unset means dynamic, which is what the
     # interactive path uses — that is the whole basis for "same verdicts".
     assert "thinking_config" not in cfg
+
+
+def test_client_pins_v1beta_because_genai_3_defaults_to_v1(monkeypatch):
+    # google-genai 3.0 moved the Developer API default to v1, which rejects
+    # JSON mode (400 "JSON mode is not enabled for api version v1").
+    install(monkeypatch, output="", states=["JOB_STATE_SUCCEEDED"])
+    run([paper(0)])
+    assert FakeClient.instances[0].http_options == {"api_version": "v1beta"}
