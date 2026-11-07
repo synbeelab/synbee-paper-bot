@@ -17,7 +17,8 @@ slack-bolt>=1.18.0
 slack-sdk>=3.27.0
 
 # LLM SDKs (필요한 것만 활성화)
-google-genai>=1.20.0                 # Gemini — Stage 2 필터 + 요약 (구 google-generativeai 후속)
+google-genai>=1.20.0,<3              # Gemini — Stage 2 필터 + 요약 (구 google-generativeai 후속)
+                                     # <3: 3.0.0(2026-11-06)이 기본 API를 v1로 바꿔 JSON 모드가 깨짐. 코드에서 v1beta를 명시했으니 3.x 검증 후 상한 해제 가능.
                                      # >=1.20: client.batches (Batch API 경로, gemini_batch.py).
                                      # 2026-08-30 검증은 2.16.0에서 함.
 anthropic>=0.40.0                    # Claude — 품질 검증·sanity check 용

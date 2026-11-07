@@ -95,7 +95,9 @@ def generate_text(prompt: str, model: str, api_key: str,
 
     client = genai.Client(
         api_key=api_key,
-        http_options=types.HttpOptions(timeout=timeout * 1000),  # ms
+        # google-genai 3.0 switched the Developer API default to v1, which rejects
+        # response_mime_type JSON mode. Pin v1beta (the 2.x default).
+        http_options=types.HttpOptions(timeout=timeout * 1000, api_version="v1beta"),  # ms
     )
     last_err: Exception | None = None
     for attempt in range(len(_BACKOFF_SECONDS) + 1):
