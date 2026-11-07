@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .. import llm_gateway
 from .gmail import GmailMessage
 
 _BACKOFF_SECONDS = (10, 30, 60)
@@ -85,8 +86,15 @@ def generate_text(prompt: str, model: str, api_key: str,
     """One JSON-mode Gemini call with transient retry.
 
     Returns (text, "") on success or (None, error description) on failure, so
-    callers with different reply schemas share the retry policy.
+    callers with different reply schemas share the retry policy. A "baze:"
+    model goes through the KU gateway; its key comes from BAZE_API_KEY.
     """
+    if llm_gateway.is_gateway_model(model):
+        try:
+            return llm_gateway.chat(prompt, model, timeout=timeout,
+                                    temperature=0.0), ""
+        except llm_gateway.GatewayError as exc:
+            return None, f"(gateway error: {str(exc)[:150]})"
     try:
         from google import genai
         from google.genai import types

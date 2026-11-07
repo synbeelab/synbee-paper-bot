@@ -30,6 +30,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from synbee_bot import llm_gateway  # noqa: E402
 from synbee_bot.filter import USAGE, filter_batch, load_prompt  # noqa: E402
 from synbee_bot.models import Paper  # noqa: E402
 
@@ -152,8 +153,11 @@ def main() -> int:
                     help="Only replay verdicts recorded on or after this date")
     ap.add_argument("--min-score", type=int, default=6)
     ap.add_argument("--parallel", type=int, default=8)
-    ap.add_argument("--model", default="gemini-2.5-flash")
-    ap.add_argument("--fallback", default="gemini-2.5-flash-lite")
+    ap.add_argument("--model", default="gemini-2.5-flash",
+                    help='Model to judge with; "baze:<id>" goes through the KU gateway')
+    ap.add_argument("--fallback", default="gemini-2.5-flash-lite",
+                    help="Fallback model, or empty for none (a model comparison "
+                         "should not let a second model fill in)")
     ap.add_argument("--seed", type=int, default=20261014)
     ap.add_argument("--reuse-sample", default="",
                     help="Path to an earlier rejudge_report.json: replay that "
@@ -163,7 +167,8 @@ def main() -> int:
     args = ap.parse_args()
 
     api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key:
+    chain = [args.model] + ([args.fallback] if args.fallback else [])
+    if not api_key and not (llm_gateway.uses_gateway(chain) and llm_gateway.api_key()):
         sys.stderr.write("GEMINI_API_KEY is not set\n")
         return 1
 
@@ -204,7 +209,7 @@ def main() -> int:
     prompt = load_prompt(ROOT / args.prompt)
     verdicts = filter_batch(
         papers, prompt=prompt, provider="gemini", model=args.model,
-        fallback_models=[args.fallback], api_key=api_key,
+        fallback_models=chain[1:], api_key=api_key,
         parallel=args.parallel,
     )
 
@@ -232,7 +237,17 @@ def main() -> int:
             lost.append(entry)
 
     report = {
-        "prompt": args.prompt, "since": args.since,
+        "prompt": args.prompt, "since": args.since, "model": args.model,
+        "fallback": args.fallback or None,
+        # Every verdict, not just the flips against seen.db, so two runs on the
+        # same sample (e.g. two models) can be diffed against each other.
+        "verdicts": {
+            paper.id: {"verdict": v.verdict, "score": v.score,
+                       "error": v.is_error, "model_used": v.model_used,
+                       "title": paper.title, "journal": paper.journal,
+                       "one_liner": v.one_liner}
+            for paper, v in verdicts
+        },
         "sampled_rejects": len(rejects), "sampled_passes": len(passes),
         "reject_population": population,
         "pass_score_distribution": pass_dist,
@@ -248,7 +263,8 @@ def main() -> int:
           f"({reject_rate:.1%})")
     print(f"LOST   {len(lost)} of {len(passes)} stored passes")
     print(f"errors {errors}")
-    print(f"tokens {USAGE.total().summary()}\n")
+    print(f"tokens {USAGE.total().summary()}")
+    print(f"BAZE gateway {llm_gateway.USAGE.total().summary()}\n")
 
     by_journal = collections.Counter(g["journal"] for g in gained)
     print("GAINED by journal:")
