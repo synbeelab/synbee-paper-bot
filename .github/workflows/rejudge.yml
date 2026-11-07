@@ -28,7 +28,9 @@ on:
         required: false
         default: "gemini-2.5-flash"
       fallback:
-        description: "Fallback model (empty = none, for a clean model comparison)"
+        # An empty dispatch input is replaced by the default, so "none" is the
+        # way to ask for no fallback (2026-11-07: "" silently ran flash-lite).
+        description: 'Fallback model ("none" = no fallback, for a clean model comparison)'
         required: false
         default: "gemini-2.5-flash-lite"
 
@@ -102,7 +104,7 @@ jobs:
             --since "${{ inputs.since }}" \
             --parallel "${{ inputs.parallel }}" \
             --model "${{ inputs.model }}" \
-            --fallback "${{ inputs.fallback }}" \
+            --fallback "${{ inputs.fallback != 'none' && inputs.fallback || '' }}" \
             $REUSE \
             --out rejudge_report.json
 
