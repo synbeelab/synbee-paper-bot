@@ -36,6 +36,7 @@ for _stream in (sys.stdout, sys.stderr):
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from synbee_bot import llm_gateway  # noqa: E402
 from synbee_bot.abstracts import backfill_abstracts  # noqa: E402
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.crossref import SOURCE_NAME as TOC_SOURCE  # noqa: E402
@@ -51,7 +52,7 @@ from synbee_bot.slack_dispatch import (  # noqa: E402
 )
 from synbee_bot.sources import fetch_from_pubmed_weekly  # noqa: E402
 from synbee_bot.storage import (  # noqa: E402
-    SeenDB, effective_since_days, split_persist_vs_retry,
+    SeenDB, effective_since_days, sources_with_errors, split_persist_vs_retry,
 )
 
 WEEKLY_TITLE = "🐝 SynBEE 주간 논문 다이제스트 (delta)"
@@ -240,6 +241,13 @@ def main() -> int:
     if cfg.llm_enabled and not args.no_llm:
         provider = cfg.weekly_llm_provider
         api_key = cfg.anthropic_api_key if provider == "anthropic" else cfg.gemini_api_key
+        weekly_chain = [cfg.weekly_llm_model] + cfg.weekly_llm_fallback_models
+        on_gateway = llm_gateway.is_gateway_model(cfg.weekly_llm_model)
+        if llm_gateway.uses_gateway(weekly_chain) and not llm_gateway.api_key():
+            _log("⚠️  BAZE_API_KEY missing — gateway models will fail over "
+                 "to the direct Gemini key.")
+        if not api_key and on_gateway and llm_gateway.api_key():
+            api_key = "(gateway only)"  # direct fallback will fail, gateway won't
         if not api_key:
             _log(f"⚠️  API key for provider '{provider}' missing — skipping LLM filter.")
             results = [(p, Verdict("YES", None, 5, "(no LLM filter)")) for p in new_papers]
@@ -251,7 +259,11 @@ def main() -> int:
             # Batch mode is the same model on the same prompt at half price; it
             # only ever hands back papers it did not finish, and those fall
             # through to the interactive path below so the digest still ships.
-            if provider == "gemini" and cfg.weekly_batch_enabled:
+            # The gateway has no Batch API: a "baze:" model goes straight to
+            # the interactive path, which already walks the fallback chain.
+            if on_gateway and cfg.weekly_batch_enabled:
+                _log("  Batch API skipped — gateway model runs interactively.")
+            if provider == "gemini" and cfg.weekly_batch_enabled and not on_gateway:
                 done, pending = filter_batch_offline(
                     pending, prompt=prompt, model=cfg.weekly_llm_model,
                     api_key=api_key,
@@ -330,6 +342,7 @@ def main() -> int:
             db.mark_seen(p, v)
         _log(f"Persisted {len(persist)} verdicts to seen.db")
         _log(f"Gemini tokens (interactive path only) — {USAGE.total().summary()}")
+        _log(f"BAZE gateway — {llm_gateway.USAGE.total().summary()}")
         # Weekly is where most title-only rejects come from (Cell Press and
         # Trends send Crossref no abstract). The daily run re-checks them.
         # Only daily's backfill can ever recover (and expire) a queued paper;
@@ -347,10 +360,20 @@ def main() -> int:
         # Delivered — safe to move the window forward, but only for the sweeps
         # that actually ran. A failed sweep keeps its watermark so next week
         # re-covers its days.
-        if pubmed_ok:
+        # Unjudged papers are only retried if re-collected, so their sweep
+        # keeps its watermark too (see storage.sources_with_errors).
+        unjudged = sources_with_errors(results)
+        toc_unjudged = TOC_SOURCE in unjudged
+        pubmed_unjudged = bool(unjudged - {TOC_SOURCE})
+        if pubmed_ok and not pubmed_unjudged:
             db.mark_source_success(WEEKLY_SOURCE)
-        if toc_ok:
+        if toc_ok and not toc_unjudged:
             db.mark_source_success(TOC_SOURCE)
+        held = [name for name, flag in ((WEEKLY_SOURCE, pubmed_unjudged),
+                                        (TOC_SOURCE, toc_unjudged)) if flag]
+        if held:
+            _log(f"↺ watermark held for {held} — unjudged papers must be "
+                 f"re-collected next run.")
 
     db.close()
     return 0

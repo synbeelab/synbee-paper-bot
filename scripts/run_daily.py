@@ -32,6 +32,7 @@ for _stream in (sys.stdout, sys.stderr):
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from synbee_bot import llm_gateway  # noqa: E402
 from synbee_bot.abstracts import backfill_abstracts  # noqa: E402
 from synbee_bot.config import load_config  # noqa: E402
 from synbee_bot.dedup import drop_known_dois, drop_known_titles, merge_by_doi  # noqa: E402
@@ -47,7 +48,7 @@ from synbee_bot.slack_dispatch import (  # noqa: E402
 )
 from synbee_bot.sources import collect_all  # noqa: E402
 from synbee_bot.storage import (  # noqa: E402
-    SeenDB, effective_since_days, split_persist_vs_retry,
+    SeenDB, effective_since_days, sources_with_errors, split_persist_vs_retry,
 )
 
 
@@ -252,7 +253,12 @@ def main() -> int:
 
     # ----- Stage 2: LLM filter -----
     if cfg.llm_enabled and not args.no_llm:
-        if cfg.llm_provider == "gemini" and not cfg.gemini_api_key:
+        llm_chain = [cfg.llm_model] + cfg.llm_fallback_models
+        if llm_gateway.uses_gateway(llm_chain) and not llm_gateway.api_key():
+            _human_log("⚠️  BAZE_API_KEY missing — gateway models will fail over "
+                       "to the direct Gemini key.")
+        gateway_only = llm_gateway.uses_gateway(llm_chain) and bool(llm_gateway.api_key())
+        if cfg.llm_provider == "gemini" and not cfg.gemini_api_key and not gateway_only:
             _human_log("⚠️  GEMINI_API_KEY missing — skipping LLM filter.")
             results = [(p, Verdict("YES", None, 5, "(no LLM filter)")) for p in new_papers]
         elif cfg.llm_provider == "anthropic" and not cfg.anthropic_api_key:
@@ -378,6 +384,7 @@ def main() -> int:
             db.mark_seen(p, v)
         _human_log(f"Persisted {len(persist)} verdicts to {cfg.seen_db_path}")
         _human_log(f"Gemini tokens — {USAGE.total().summary()}")
+        _human_log(f"BAZE gateway — {llm_gateway.USAGE.total().summary()}")
         settle_title_only(db, recovered, persist)
         # Only daily's backfill can ever recover (and expire) a queued paper;
         # with it off, the queue would just grow.
@@ -394,7 +401,14 @@ def main() -> int:
 
     # Delivered — the sources that worked may now advance. The ones that failed
     # keep their old watermark, which is what widens the next run's window.
-    _advance_watermarks(db, collected.succeeded, dry_run=args.dry_run)
+    # So do sources with unjudged papers: they are only retried if re-collected.
+    unjudged = sources_with_errors(results) & set(collected.succeeded)
+    _advance_watermarks(db, set(collected.succeeded) - unjudged,
+                        dry_run=args.dry_run)
+    if unjudged:
+        _human_log(
+            f"↺ {sorted(unjudged)} not advanced — they have unjudged papers, and "
+            f"the next run must still reach back far enough to collect them.")
     if collected.failures:
         _human_log(
             f"↺ {sorted(collected.failures)} not advanced — next run will "

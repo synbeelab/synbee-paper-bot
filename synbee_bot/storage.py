@@ -284,6 +284,20 @@ def effective_since_days(
     return min(max(configured, gap + 1), max_days)
 
 
+def sources_with_errors(results: Iterable[tuple[Paper, Verdict]]) -> set[str]:
+    """Sources that still have papers the LLM never actually judged.
+
+    An errored paper is left unseen so a later run can judge it — but a later
+    run only sees it again if it is collected again, and collection reaches
+    back only to the source's watermark. Advancing that watermark over an
+    errored paper therefore loses it as soon as it drops out of the source's
+    window (an RSS feed rolls within a day or two). 2026-11-07: every one of
+    the day's 64 papers errored on an SDK change and the watermark advanced
+    anyway. Holding the watermark is what makes "retry next run" true.
+    """
+    return {paper.source for paper, verdict in results if verdict.is_error}
+
+
 def split_persist_vs_retry(
     results: Iterable[tuple[Paper, Verdict]],
     *,

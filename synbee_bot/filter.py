@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from . import llm_gateway
 from .models import Paper, Verdict
 
 
@@ -192,6 +193,25 @@ def _filter_with_gemini(paper: Paper, prompt: str, model: str, api_key: str,
 
 
 # ---------------------------------------------------------------------------
+# Provider: KU BAZE gateway  (model names prefixed "baze:")
+# ---------------------------------------------------------------------------
+def _filter_with_gateway(paper: Paper, prompt: str, model: str,
+                         timeout: int = 30) -> Verdict:
+    """One gateway call. is_error=True on failure so the chain moves on to the
+    next model — normally the same model on the direct Gemini key."""
+    try:
+        text = llm_gateway.chat(_render_prompt(prompt, paper), model,
+                                timeout=timeout, temperature=0.1)
+    except llm_gateway.GatewayError as e:
+        sys.stderr.write(f"[{model}] error on {paper.id[:40]}: {str(e)[:200]}\n")
+        return Verdict(verdict="NO", mission=None, score=0,
+                       one_liner=f"(gateway error on {model}: {e})"[:300],
+                       one_liner_en=f"(gateway error on {model})",
+                       is_error=True, model_used=model)
+    return _parse_verdict(text, model_used=model)
+
+
+# ---------------------------------------------------------------------------
 # Provider: Anthropic Claude
 # ---------------------------------------------------------------------------
 def _filter_with_anthropic(paper: Paper, prompt: str, model: str, api_key: str,
@@ -232,7 +252,9 @@ def filter_paper(paper: Paper, prompt: str, *, provider: str, model: str,
     chain = [model] + list(fallback_models or [])
     last_v: Verdict | None = None
     for i, m in enumerate(chain):
-        if provider == "gemini":
+        if llm_gateway.is_gateway_model(m):
+            v = _filter_with_gateway(paper, prompt, m, timeout)
+        elif provider == "gemini":
             v = _filter_with_gemini(paper, prompt, m, api_key, timeout)
         elif provider == "anthropic":
             v = _filter_with_anthropic(paper, prompt, m, api_key, timeout)

@@ -23,6 +23,14 @@ on:
         description: "Run ID of an earlier re-judge: reuse its exact reject sample so only the prompt differs"
         required: false
         default: ""
+      model:
+        description: 'Model to judge with ("baze:<id>" = KU gateway)'
+        required: false
+        default: "gemini-2.5-flash"
+      fallback:
+        description: "Fallback model (empty = none, for a clean model comparison)"
+        required: false
+        default: "gemini-2.5-flash-lite"
 
 permissions:
   contents: read
@@ -82,6 +90,7 @@ jobs:
       - name: Re-judge with the candidate prompt
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          BAZE_API_KEY: ${{ secrets.BAZE_API_KEY }}
           PYTHONIOENCODING: utf-8
         run: |
           test -f data/seen.db || { echo "❌ no seen.db in cache"; exit 1; }
@@ -92,6 +101,8 @@ jobs:
           python scripts/rejudge_compare.py \
             --since "${{ inputs.since }}" \
             --parallel "${{ inputs.parallel }}" \
+            --model "${{ inputs.model }}" \
+            --fallback "${{ inputs.fallback }}" \
             $REUSE \
             --out rejudge_report.json
 

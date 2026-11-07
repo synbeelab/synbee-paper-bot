@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from synbee_bot import llm_gateway  # noqa: E402
 from synbee_bot.spam_rescue.applicant import (  # noqa: E402
     load_decline_config,
     run_decline,
@@ -137,4 +138,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    exit_code = main()
+    # The school quota is the thing to watch once models run through BAZE.
+    print(f"BAZE gateway — {llm_gateway.USAGE.total().summary()}", flush=True)
+    raise SystemExit(exit_code)
