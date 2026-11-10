@@ -57,12 +57,13 @@ def test_grad_applicant_gets_the_already_secured_text():
     assert text.startswith("Dear Samaneh,")
     assert "already secured more than enough grad student candidates" in text
     assert "resources" not in text
+    assert "limited lab space and research funding" in text
 
 
 def test_postdoc_gets_the_resources_and_space_text():
     text = render_decline(inquiry(), TEMPLATES)
     assert text.startswith("Dear Dr. Khodi,")
-    assert "constraints in resources and lab space" in text
+    assert "limited lab space and research funding" in text
     assert "additional postdoctoral researchers" in text
 
 
@@ -78,7 +79,17 @@ def test_korean_grad_applicant_gets_his_korean_text():
                                   has_doctorate=False), TEMPLATES)
     assert text.startswith("홍길동 학생에게,")
     assert "입학 예정인 학생들이 모두 이미 계획되어" in text
+    assert "한정된 연구실 공간과 연구비로 한동안은 대학원생 추가 선발은 하지 않을 예정입니다" in text
     assert text.rstrip().endswith("양동수 드림.")
+
+
+@pytest.mark.parametrize("role, phrase", [("intern", "인턴 연구생"),
+                                          ("postdoc", "박사후연구원")])
+def test_korean_resources_text_uses_his_space_and_funding_wording(role, phrase):
+    text = render_decline(inquiry(role=role, language="ko", full_name="홍길동",
+                                  has_doctorate=False), TEMPLATES)
+    assert (f"한정된 연구실 공간과 연구비로 한동안은 {phrase} 추가 선발은 "
+            "하지 않을 예정입니다") in text
 
 
 def test_korean_postdoc_is_addressed_as_doctor():
