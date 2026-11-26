@@ -27,6 +27,10 @@ from synbee_bot.spam_rescue.rescue import (  # noqa: E402
     load_rescue_config,
     run_rescue,
 )
+from synbee_bot.spam_rescue.sweep import (  # noqa: E402
+    InboxSweep,
+    load_sweep_config,
+)
 
 try:
     from dotenv import load_dotenv
@@ -46,6 +50,8 @@ def parse_args() -> argparse.Namespace:
                         help="override the rescue circuit breaker")
     parser.add_argument("--min-confidence", type=int, default=None,
                         help="override llm.min_confidence")
+    parser.add_argument("--no-sweep", action="store_true",
+                        help="skip the inbox -> spam learn/sweep stages")
     parser.add_argument("--no-decline", action="store_true",
                         help="skip the applicant decline-draft stage")
     parser.add_argument("--decline-since", default=None,
@@ -85,6 +91,26 @@ def main() -> int:
         timeout=cfg.timeout,
     )
 
+    # The sweep stages are isolated: a failure there turns the run red but
+    # never stops the rescue or the decline drafts, which must not miss mail.
+    sweeper = None
+    sweep_failed = False
+    try:
+        sweep_cfg = load_sweep_config(args.config)
+        if sweep_cfg.enabled and not args.no_sweep:
+            sweeper = InboxSweep(
+                client, sweep_cfg,
+                checked_label_id=client.ensure_label(cfg.checked_label),
+                dry_run=args.dry_run,
+            )
+            # Learn first: a message he just moved to spam must be marked
+            # checked before the rescue stage gets a chance to pull it back.
+            sweeper.learn()
+            cfg = replace(cfg, never_rescue_senders=sweeper.senders)
+    except (GmailError, OSError, ValueError) as exc:
+        sys.stderr.write(f"inbox sweep (learn) failed: {exc}\n")
+        sweeper, sweep_failed = None, True
+
     try:
         summary = run_rescue(
             client, cfg, api_key=os.environ["GEMINI_API_KEY"], dry_run=args.dry_run
@@ -93,8 +119,18 @@ def main() -> int:
         sys.stderr.write(f"Gmail API error: {exc}\n")
         return 1
 
+    if sweeper is not None:
+        try:
+            sweeper.honour_undos()
+            sweeper.sweep()
+            sweeper.stamp()
+        except GmailError as exc:
+            sys.stderr.write(f"inbox sweep failed: {exc}\n")
+            sweep_failed = True
+
     status = 0
-    if summary.aborted:
+    if summary.aborted or sweep_failed or (
+            sweeper is not None and sweeper.summary.aborted):
         status = 1
     elif summary.scanned and summary.error_ratio > cfg.max_error_ratio:
         sys.stderr.write(
