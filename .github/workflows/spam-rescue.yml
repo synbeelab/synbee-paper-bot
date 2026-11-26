@@ -80,6 +80,9 @@ jobs:
       # 방문연구원·인턴)에 거절 답장 "초안"을 만든다. 발송은 하지 않는다 —
       # 원 메일을 읽지 않음 + 거절초안 라벨로 표시해 교수가 직접 보내게 둔다.
       # (applicant.py, config/spam_rescue.yml의 applicant_decline)
+      # 반대 방향도 같은 실행에서 돈다(sweep.py): 교수가 받은편지함에서 직접
+      # 스팸으로 옮긴 발신자를 숨김 라벨 SpamSenders/<주소>로 학습하고, 그 발신자와
+      # never_rescue.senders의 받은편지함 메일만 스팸함으로 옮긴다. 모델 판정 없음.
       - name: Screen spam folder and draft applicant declines
         env:
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}

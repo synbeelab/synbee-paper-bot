@@ -97,6 +97,25 @@ def fails_all_authentication(msg: GmailMessage) -> bool:
     )
 
 
+def match_sender(address: str, senders: tuple[str, ...]) -> str | None:
+    """Return the `senders` entry covering `address`, or None.
+
+    Entries are exact addresses, or `@domain` for a whole domain with its
+    subdomains — `@example.org` covers `a@lab.example.org` but never
+    `a@notexample.org`.
+    """
+    if not address or "@" not in address:
+        return None
+    domain = address.rsplit("@", 1)[-1]
+    for entry in senders:
+        if entry.startswith("@"):
+            if domain == entry[1:] or domain.endswith("." + entry[1:]):
+                return entry
+        elif address == entry:
+            return entry
+    return None
+
+
 def never_rescue_match(msg: GmailMessage, *, senders: tuple[str, ...],
                        keywords: tuple[str, ...]) -> str | None:
     """Return the never_rescue entry this message hits, or None.
@@ -107,15 +126,9 @@ def never_rescue_match(msg: GmailMessage, *, senders: tuple[str, ...],
     so a student who merely mentions an institute is not swept up. This list
     can only keep mail in spam, so a spoofed match costs nothing.
     """
-    address = msg.sender_address
-    if address:
-        domain = address.rsplit("@", 1)[-1]
-        for entry in senders:
-            if entry.startswith("@"):
-                if domain == entry[1:] or domain.endswith("." + entry[1:]):
-                    return entry
-            elif address == entry:
-                return entry
+    hit = match_sender(msg.sender_address, senders)
+    if hit:
+        return hit
     haystack = f"{msg.sender}\n{msg.subject}".casefold()
     for keyword in keywords:
         if keyword and keyword.casefold() in haystack:

@@ -237,10 +237,17 @@ class GmailClient:
                 break
         return ids[:max_results]
 
-    def search_message_ids(self, query: str, *, max_results: int = 100) -> list[str]:
-        """Message ids matching a Gmail search query, newest first."""
+    def search_message_ids(self, query: str, *, max_results: int = 100,
+                           include_spam: bool = False) -> list[str]:
+        """Message ids matching a Gmail search query, newest first.
+
+        `include_spam` is required for any `in:spam` query — without it the
+        API silently returns nothing from the spam folder.
+        """
         ids: list[str] = []
         params: dict[str, Any] = {"q": query, "maxResults": min(100, max_results)}
+        if include_spam:
+            params["includeSpamTrash"] = "true"
         page_token = ""
         while len(ids) < max_results:
             if page_token:
@@ -282,6 +289,17 @@ class GmailClient:
                        entries[0] if entries else {})
         return str(default.get("signature", ""))
 
+    def own_addresses(self) -> tuple[str, ...]:
+        """Every address he can send as, lower-cased — read at run time so
+        his addresses never have to live in this public repo."""
+        data = self._request("GET", "/settings/sendAs")
+        return tuple(str(e.get("sendAsEmail", "")).lower()
+                     for e in data.get("sendAs", []) if e.get("sendAsEmail"))
+
+    def delete_label(self, label_id: str) -> None:
+        """Remove a label definition; messages carrying it are not touched."""
+        self._request("DELETE", f"/labels/{label_id}")
+
     def create_draft(self, raw_b64url: str, *, thread_id: str) -> str:
         """Save a draft (never sends). Returns the draft id."""
         data = self._request("POST", "/drafts", json={
@@ -315,3 +333,13 @@ class GmailClient:
             "POST", f"/messages/{message_id}/modify",
             json={"addLabelIds": add or [], "removeLabelIds": remove or []},
         )
+
+    def batch_modify(self, message_ids: list[str], *, add: list[str] | None = None,
+                     remove: list[str] | None = None) -> None:
+        """Relabel many messages; the API takes at most 1000 ids per call."""
+        for start in range(0, len(message_ids), 1000):
+            self._request(
+                "POST", "/messages/batchModify",
+                json={"ids": message_ids[start:start + 1000],
+                      "addLabelIds": add or [], "removeLabelIds": remove or []},
+            )

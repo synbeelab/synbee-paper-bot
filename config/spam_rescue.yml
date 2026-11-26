@@ -21,12 +21,53 @@ labels:
 # keeps mail in spam, so it is safe to be generous here.
 #   senders:  exact address, or "@domain" (subdomains included)
 #   keywords: matched against the From display name and the Subject, not body
+#
+# The same sender list drives the inbox sweep below: mail from these senders
+# that lands in the INBOX is moved to spam. So list only senders whose every
+# mail he wants gone. This repo is public — institutional/role addresses and
+# domains only; individual people are learned into Gmail labels instead.
 never_rescue:
   senders:
     - "humanrights@korea.ac.kr"   # 고려대 인권·성평등센터 (월례세미나 등)
+    # 2026-11-26: rescued by this bot, then put back in spam by hand.
+    - "kuia@korea.ac.kr"          # 고령사회연구원
+    - "kuifls@korea.ac.kr"        # 외국어센터
+    - "kutime2023@korea.ac.kr"    # 근대교육연구소
+    - "ari1957@adm.korea.ac.kr"   # 아세아문제연구원
+    - "dongasia@korea.ac.kr"      # 동아시아문화교류연구소
+    - "kufine@korea.ac.kr"        # 사범대학 미래교육연구원
+    - "yiletter@youngin.com"      # 영인과학 행사·프로모션 레터
+    - "ariaresearch@substack.com" # ARIA 뉴스레터
+    # 2026-11-26: confirmed spam that reached the inbox.
+    - "inca@i-inca.or.kr"         # (사)국제차세대융합기술학회 CFP
+    - "@innovatexconferences.co.uk"
+    - "@materialsfutures2021.com"
+    - "@oaskpublishers.org"
+    - "@globalresearchtalent.com"
   keywords:
     - "인권·성평등센터"
     - "고령사회연구원"            # 발신 주소 미확인 — 표시명/제목으로 거름
+
+# Inbox → spam (sweep.py). No model decides anything here: mail moves only
+# when its sender is on never_rescue.senders or in the learned registry —
+# hidden Gmail labels `SpamSenders/<address>`, one per sender he has himself
+# moved from the inbox to spam. Delete such a label in Gmail to unlearn it;
+# moving a swept message back to the inbox unlearns its sender automatically.
+inbox_sweep:
+  enabled: true
+  seen_label: "InboxSeen"           # stamped on inbox mail (hidden)
+  learned_label: "SpamLearned"      # his manual move, already processed
+  swept_label: "SpamSwept"          # moved to spam by this job
+  undone_label: "SpamSweepUndone"   # he pulled it back — never again
+  registry_prefix: "SpamSenders"
+  # How far back the sweep looks for listed senders still in the inbox.
+  lookback_days: 90
+  # Inbox mail older than this never gets InboxSeen, so moving it to spam
+  # by hand is not learned. Two weeks covers mail he actually triages.
+  stamp_lookback_days: 14
+  # Circuit breaker: more planned moves than this → move nothing, fail red.
+  max_moves_per_run: 30
+  max_learn_per_run: 20
 
 llm:
   model: "gemini-2.5-flash"
